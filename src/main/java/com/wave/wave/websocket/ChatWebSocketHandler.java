@@ -53,12 +53,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         session.getAttributes().put("userId", userId);
         sessions.put(userId, session);
 
-        // update online status
         try {
             userService.setOnlineStatus(UUID.fromString(userId), true);
         } catch (Exception ignored) {}
-
-        // broadcast online status to all connected users
         broadcastPresence(userId, true);
     }
 
@@ -111,13 +108,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "data", saved
         ));
 
-        // Send to receiver if online
         WebSocketSession receiverSession = sessions.get(msg.getReceiverId());
         if (receiverSession != null && receiverSession.isOpen()) {
             receiverSession.sendMessage(new TextMessage(msgJson));
         }
-
-        // Send confirmation back to sender
         WebSocketSession senderSession = sessions.get(senderId);
         if (senderSession != null && senderSession.isOpen()) {
             senderSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
@@ -153,7 +147,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "data", saved
         ));
 
-        // Send to all group members who are online
         List<GroupMember> members = groupService.getGroupMembers(groupId);
         for (GroupMember member : members) {
             WebSocketSession memberSession = sessions.get(member.getUserId());

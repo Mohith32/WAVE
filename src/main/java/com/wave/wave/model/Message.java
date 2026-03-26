@@ -29,7 +29,7 @@ public class Message {
     private String iv;
 
     @Column
-    private String messageType; // TEXT, IMAGE, DOCUMENT
+    private String messageType;
 
     @Column
     private String fileName;
@@ -54,7 +54,6 @@ public class Message {
 
     public Message() {}
 
-    // Getters and Setters
     public UUID getMessageId() { return messageId; }
     public void setMessageId(UUID messageId) { this.messageId = messageId; }
 

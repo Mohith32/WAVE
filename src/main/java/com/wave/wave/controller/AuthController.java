@@ -73,7 +73,6 @@ public class AuthController {
     }
 
     private String extractUserIdFromAuth(String authHeader) {
-        // The JwtAuthFilter already validated the token and set the userId as principal
-        return authHeader.substring(7); // Fallback, but normally use SecurityContext
+        return authHeader.substring(7);
     }
 }

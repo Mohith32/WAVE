@@ -31,11 +31,7 @@ public class GroupService {
         group = groupRepo.save(group);
 
         String groupId = group.getGroupId().toString();
-
-        // Add creator as ADMIN
         memberRepo.save(new GroupMember(groupId, creatorUserId, GroupMember.Role.ADMIN));
-
-        // Add other members
         if (memberIds != null) {
             for (String memberId : memberIds) {
                 if (!memberId.equals(creatorUserId)) {
