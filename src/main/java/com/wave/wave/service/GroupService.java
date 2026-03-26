@@ -1,0 +1,80 @@
+package com.wave.wave.service;
+
+import com.wave.wave.model.ChatGroup;
+import com.wave.wave.model.GroupMember;
+import com.wave.wave.repository.GroupMemberRepository;
+import com.wave.wave.repository.GroupRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Service
+public class GroupService {
+
+    @Autowired
+    private GroupRepository groupRepo;
+
+    @Autowired
+    private GroupMemberRepository memberRepo;
+
+    public ChatGroup createGroup(String groupName, String description, String creatorUserId, List<String> memberIds) {
+        ChatGroup group = new ChatGroup();
+        group.setGroupName(groupName);
+        group.setDescription(description);
+        group.setCreatedBy(creatorUserId);
+        group.setCreatedAt(LocalDateTime.now());
+        group = groupRepo.save(group);
+
+        String groupId = group.getGroupId().toString();
+
+        // Add creator as ADMIN
+        memberRepo.save(new GroupMember(groupId, creatorUserId, GroupMember.Role.ADMIN));
+
+        // Add other members
+        if (memberIds != null) {
+            for (String memberId : memberIds) {
+                if (!memberId.equals(creatorUserId)) {
+                    memberRepo.save(new GroupMember(groupId, memberId, GroupMember.Role.MEMBER));
+                }
+            }
+        }
+
+        return group;
+    }
+
+    public Optional<ChatGroup> getGroup(UUID groupId) {
+        return groupRepo.findById(groupId);
+    }
+
+    public List<ChatGroup> getUserGroups(String userId) {
+        List<GroupMember> memberships = memberRepo.findByUserId(userId);
+        return memberships.stream()
+                .map(m -> groupRepo.findById(UUID.fromString(m.getGroupId())).orElse(null))
+                .filter(g -> g != null)
+                .toList();
+    }
+
+    public List<GroupMember> getGroupMembers(String groupId) {
+        return memberRepo.findByGroupId(groupId);
+    }
+
+    public void addMember(String groupId, String userId) {
+        if (!memberRepo.existsByGroupIdAndUserId(groupId, userId)) {
+            memberRepo.save(new GroupMember(groupId, userId, GroupMember.Role.MEMBER));
+        }
+    }
+
+    @Transactional
+    public void removeMember(String groupId, String userId) {
+        memberRepo.deleteByGroupIdAndUserId(groupId, userId);
+    }
+
+    public boolean isMember(String groupId, String userId) {
+        return memberRepo.existsByGroupIdAndUserId(groupId, userId);
+    }
+}
