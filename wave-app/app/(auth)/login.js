@@ -1,46 +1,51 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { api, setAuthToken } from '../../utils/api';
 import { storage } from '../../utils/storage';
 import { connectWebSocket } from '../../utils/websocket';
-import { theme, ghostBorder } from '../../utils/theme';
+import { generateKeyPair } from '../../utils/crypto';
+import { useTheme } from '../../utils/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      setError('Please fill in all fields');
+      Alert.alert('Missing fields', 'Please enter your email and password.');
       return;
     }
-    setError('');
     setLoading(true);
-
     try {
-      const res = await api.login(email.trim(), password);
+      const res = await api.login({ email: email.trim(), password });
       if (res.success) {
-        const { token, userId, email: userEmail, displayName } = res.data;
+        const { token, userId, displayName, email: userEmail } = res.data;
+        let keyPair = await storage.getKeyPair();
+        if (!keyPair) {
+          keyPair = await generateKeyPair();
+          await storage.saveKeyPair(keyPair);
+          await api.updatePublicKey(token, keyPair.publicKey);
+        }
         setAuthToken(token);
-        await storage.saveSession(token, userId, userEmail, displayName);
+        await storage.saveSession({ token, userId, displayName, email: userEmail });
         connectWebSocket(token);
         router.replace('/(main)/chats');
       } else {
-        setError(res.message || 'Login failed');
+        Alert.alert('Login failed', res.message || 'Invalid credentials.');
       }
     } catch (e) {
-      setError('Connection error. Check your server.');
+      Alert.alert('Error', 'Could not connect to server.');
     } finally {
       setLoading(false);
     }
@@ -48,138 +53,134 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <View style={s.inner}>
-        {/* Logo & Title */}
-        <View style={s.logoArea}>
-          <BlurView tint="dark" intensity={60} style={[s.logoCircle, ghostBorder]}>
-            <Ionicons name="finger-print" size={32} color={theme.colors.primary} />
-          </BlurView>
-          <Text style={s.title}>WAVE</Text>
-          <Text style={s.subtitle}>END-TO-END ENCRYPTED</Text>
+      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+        <View style={s.header}>
+          <View style={s.logoBox}>
+            <Ionicons name="paper-plane" size={46} color="#FFFFFF" />
+          </View>
+          <Text style={s.appName}>Wave</Text>
+          <Text style={s.tagline}>Please confirm your account</Text>
         </View>
 
-        {/* Form Container */}
-        <BlurView tint="dark" intensity={40} style={[s.formCard, ghostBorder]}>
-          <View style={s.form}>
-            <View style={[s.inputWrap, ghostBorder]}>
-              <Ionicons name="mail-outline" size={20} color={theme.colors.textVariant} style={s.inputIcon} />
-              <TextInput
-                style={s.input}
-                placeholder="Email Address"
-                placeholderTextColor={theme.colors.placeholder}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={[s.inputWrap, ghostBorder]}>
-              <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textVariant} style={s.inputIcon} />
-              <TextInput
-                style={s.input}
-                placeholder="Secure Password"
-                placeholderTextColor={theme.colors.placeholder}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={s.eyeBtn}>
-                <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.colors.textVariant} />
-              </TouchableOpacity>
-            </View>
-
-            {error ? <Text style={s.error}>{error}</Text> : null}
-
-            <TouchableOpacity onPress={handleLogin} disabled={loading} activeOpacity={0.8} style={s.btnWrapper}>
-              <LinearGradient
-                colors={[theme.colors.primaryGradientStart, theme.colors.primaryGradientEnd]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={s.btn}
-              >
-                {loading ? (
-                  <ActivityIndicator color={theme.colors.background} />
-                ) : (
-                  <Text style={s.btnText}>AUTHENTICATE</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <View style={s.footer}>
-              <Text style={s.footerText}>DON'T HAVE AN ACCOUNT? </Text>
-              <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-                <Text style={s.footerLink}>INITIALIZE</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={s.form}>
+          <Text style={s.label}>Email</Text>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={s.input}
+              placeholder="you@example.com"
+              placeholderTextColor={theme.colors.placeholder}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
           </View>
-        </BlurView>
-      </View>
+
+          <Text style={[s.label, { marginTop: 18 }]}>Password</Text>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={[s.input, { flex: 1 }]}
+              placeholder="Your password"
+              placeholderTextColor={theme.colors.placeholder}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.textMuted}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[s.btn, loading && s.btnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={s.btnText}>NEXT</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={s.link} onPress={() => router.push('/(auth)/register')}>
+          <Text style={s.linkText}>Don't have an account? <Text style={s.linkBold}>Create one</Text></Text>
+        </TouchableOpacity>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
-  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
-  logoArea: { alignItems: 'center', marginBottom: theme.spacing.xl },
-  logoCircle: {
-    width: 64, height: 64, borderRadius: 32,
+const makeStyles = (t) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.colors.background },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+
+  header: { alignItems: 'center', marginBottom: 36 },
+  logoBox: {
+    width: 110, height: 110, borderRadius: 55,
+    backgroundColor: t.colors.primary,
     justifyContent: 'center', alignItems: 'center',
-    marginBottom: theme.spacing.lg,
-    overflow: 'hidden',
+    marginBottom: 20,
   },
-  title: { 
-    fontFamily: theme.typography.fontSemiBold, 
-    fontSize: theme.fontSize.xxl, 
-    color: theme.colors.primary, 
-    letterSpacing: 4 
+  appName: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: 30, color: t.colors.text, letterSpacing: 0.5,
   },
-  subtitle: { 
-    fontFamily: theme.typography.fontLight, 
-    fontSize: theme.fontSize.xs, 
-    color: theme.colors.secondary, 
-    marginTop: 6, 
-    letterSpacing: 2 
+  tagline: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.md, color: t.colors.textSecondary,
+    marginTop: 8, textAlign: 'center',
   },
-  formCard: {
-    padding: theme.spacing.xl,
-    borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.surfaceBase,
-    overflow: 'hidden',
-    ...theme.elevation.floating,
+
+  form: { paddingHorizontal: 4 },
+  label: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.sm,
+    color: t.colors.primary,
+    marginBottom: 4,
   },
-  form: { gap: theme.spacing.lg },
   inputWrap: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: theme.colors.surfaceLow,
-    borderRadius: theme.borderRadius.xl, // Super-ellipse
-    paddingHorizontal: 20, height: 56,
+    borderBottomWidth: 1.5,
+    borderBottomColor: t.colors.primary,
+    paddingBottom: 6,
   },
-  inputIcon: { marginRight: 12 },
-  input: { 
-    flex: 1, 
-    color: theme.colors.text, 
-    fontFamily: theme.typography.fontRegular,
-    fontSize: theme.fontSize.md,
-    letterSpacing: 0.5,
+  input: {
+    flex: 1,
+    color: t.colors.text,
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.lg,
+    paddingVertical: 4,
   },
-  eyeBtn: { padding: 4 },
-  error: { color: theme.colors.error, fontSize: theme.fontSize.sm, fontFamily: theme.typography.fontRegular, textAlign: 'center' },
-  btnWrapper: {
-    ...theme.elevation.floating,
-    marginTop: 8,
-  },
+
   btn: {
-    height: 56, borderRadius: theme.borderRadius.xl,
+    height: 52, borderRadius: t.borderRadius.md,
+    backgroundColor: t.colors.primary,
     justifyContent: 'center', alignItems: 'center',
+    marginTop: 32,
   },
-  btnText: { 
-    color: theme.colors.background, 
-    fontSize: theme.fontSize.sm, 
-    fontFamily: theme.typography.fontSemiBold,
-    letterSpacing: theme.typography.trackingLabel,
+  btnDisabled: { opacity: 0.6 },
+  btnText: {
+    color: '#fff',
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.md,
+    letterSpacing: 1,
   },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 16 },
-  footerText: { color: theme.colors.textVariant, fontSize: theme.fontSize.xs, fontFamily: theme.typography.fontLight, letterSpacing: 1 },
-  footerLink: { color: theme.colors.secondary, fontSize: theme.fontSize.xs, fontFamily: theme.typography.fontSemiBold, letterSpacing: 1 },
+
+  link: { alignItems: 'center', marginTop: 28 },
+  linkText: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textSecondary,
+  },
+  linkBold: {
+    fontFamily: t.typography.fontSemiBold,
+    color: t.colors.primary,
+  },
 });

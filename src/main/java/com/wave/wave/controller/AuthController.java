@@ -43,11 +43,25 @@ public class AuthController {
                         "userId", u.getUserId().toString(),
                         "email", u.getEmail(),
                         "displayName", u.getDisplayName(),
+                        "username", u.getUsername() != null ? u.getUsername() : "",
                         "online", u.isOnline(),
                         "publicKey", u.getPublicKey() != null ? u.getPublicKey() : ""
                 ))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok("Users fetched", users));
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> searchUsers(@RequestParam String q) {
+        List<Map<String, Object>> users = userService.searchUsers(q).stream()
+                .map(u -> Map.<String, Object>of(
+                        "userId", u.getUserId().toString(),
+                        "displayName", u.getDisplayName(),
+                        "username", u.getUsername() != null ? u.getUsername() : "",
+                        "publicKey", u.getPublicKey() != null ? u.getPublicKey() : ""
+                ))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.ok("Search results", users));
     }
 
     @PutMapping("/public-key")

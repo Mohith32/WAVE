@@ -1,216 +1,151 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl
+  View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import { api } from '../../utils/api';
-import { storage } from '../../utils/storage';
-import { addMessageHandler } from '../../utils/websocket';
-import { theme } from '../../utils/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFriends } from '../../hooks/useFriends';
+import Avatar from '../../components/Avatar';
+import EmptyState from '../../components/EmptyState';
+import { useTheme } from '../../utils/theme';
+
+const ITEM_HEIGHT = 72;
+
+const ChatItem = memo(({ item, onPress, theme, s }) => (
+  <TouchableOpacity
+    style={s.item}
+    activeOpacity={0.6}
+    onPress={() => onPress(item)}
+  >
+    <Avatar name={item.displayName} size={54} showOnline online={item.online} />
+    <View style={s.info}>
+      <View style={s.topRow}>
+        <Text style={s.name} numberOfLines={1}>{item.displayName}</Text>
+        <Text style={s.time}>{item.online ? 'online' : ''}</Text>
+      </View>
+      <Text style={s.sub} numberOfLines={1}>
+        Tap to start a secure chat
+      </Text>
+    </View>
+  </TouchableOpacity>
+));
 
 export default function ChatsScreen() {
   const router = useRouter();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState(null);
+  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
+  const { friends, loading, refreshing, error, load } = useFriends();
 
-  const loadUsers = useCallback(async () => {
-    try {
-      const session = await storage.getSession();
-      setCurrentUserId(session?.userId);
-
-      const res = await api.getUsers();
-      if (res.success) {
-        // Filter out self
-        const others = (res.data || []).filter(u => u.userId !== session?.userId);
-        setUsers(others);
-      }
-    } catch (e) {
-      console.error('Failed to load users', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUsers();
-
-    // Listen for presence updates
-    const removeHandler = addMessageHandler((msg) => {
-      if (msg.type === 'presence') {
-        setUsers(prev => prev.map(u => 
-          u.userId === msg.userId ? { ...u, online: msg.online } : u
-        ));
-      }
-    });
-
-    return () => removeHandler();
-  }, [loadUsers]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadUsers();
-  };
-
-  const renderItem = ({ item }) => {
-    // Treat online users as "active" for visual demo (surface-bright background + pill)
-    const isActive = item.online;
-
-    return (
-      <TouchableOpacity
-        style={[s.chatItem, isActive && s.chatItemActive]}
-        activeOpacity={0.7}
-        onPress={() => router.push(`/(main)/chat/${item.userId}?name=${encodeURIComponent(item.displayName)}`)}
-      >
-        {isActive && <View style={s.activePill} />}
-        
-        <View style={s.avatarGroup}>
-          <View style={s.avatar}>
-            <Text style={s.avatarText}>{item.displayName.charAt(0).toUpperCase()}</Text>
-          </View>
-        </View>
-
-        <View style={s.chatInfo}>
-          <Text style={s.userName}>{item.displayName}</Text>
-          <Text style={s.lastMessage}>Tap to establish connection</Text>
-        </View>
-
-        <View style={s.chatMeta}>
-          <Text style={s.metaText}>SECURE</Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  const handlePress = useCallback((user) => {
+    router.push(`/(main)/chat/${user.userId}?name=${encodeURIComponent(user.displayName)}`);
+  }, [router]);
 
   return (
     <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>MESSAGES</Text>
-        <TouchableOpacity style={s.headerBtn}>
-          <Ionicons name="search" size={24} color={theme.colors.primary} />
+      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
+        <Text style={s.title}>Chats</Text>
+        <TouchableOpacity
+          style={s.searchBtn}
+          onPress={() => router.push('/(main)/friends')}
+          hitSlop={10}
+        >
+          <Ionicons name="search" size={22} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
 
-      <View style={s.e2eeBar}>
-        <Ionicons name="shield-checkmark" size={12} color={theme.colors.secondary} />
-        <Text style={s.e2eeText}>ENCRYPTED CONNECTION ESTABLISHED</Text>
-      </View>
-
-      {loading ? (
-        <View style={s.loader}>
-          <ActivityIndicator size="large" color={theme.colors.secondary} />
-        </View>
+      {error ? (
+        <EmptyState icon="cloud-offline-outline" title="Network error" subtitle={error} />
       ) : (
         <FlatList
-          data={users}
-          keyExtractor={(item) => item.userId}
-          renderItem={renderItem}
-          contentContainerStyle={s.listContent}
+          data={friends}
+          keyExtractor={item => item.userId}
+          renderItem={({ item }) => <ChatItem item={item} onPress={handlePress} theme={theme} s={s} />}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={theme.colors.secondary}
+              onRefresh={() => load(true)}
+              tintColor={theme.colors.primary}
             />
           }
+          contentContainerStyle={friends.length === 0 ? s.emptyContent : null}
+          getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
+          ItemSeparatorComponent={() => <View style={s.separator} />}
           ListEmptyComponent={
-            <View style={s.empty}>
-              <Ionicons name="hardware-chip-outline" size={48} color={theme.colors.textDisabled} />
-              <Text style={s.emptyText}>NO NODES FOUND IN NETWORK.</Text>
-            </View>
+            !loading && (
+              <EmptyState
+                icon="chatbubbles-outline"
+                title="No chats yet"
+                subtitle="Add contacts to start messaging"
+              />
+            )
           }
         />
       )}
+
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => router.push('/(main)/friends')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="create-outline" size={26} color="#FFFFFF" />
+      </TouchableOpacity>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
+const makeStyles = (t) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 24, paddingTop: 64, paddingBottom: 16,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 16, paddingBottom: 10,
+    backgroundColor: t.colors.headerBg,
+    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
   },
-  title: { 
-    fontFamily: theme.typography.fontSemiBold, 
-    fontSize: theme.fontSize.xxl, 
-    color: theme.colors.primary, 
-    letterSpacing: 4 
+  title: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.xxl,
+    color: t.colors.text,
   },
-  headerBtn: { 
-    padding: 10, 
-    backgroundColor: theme.colors.surfaceBase, 
-    borderRadius: theme.borderRadius.full 
-  },
-  e2eeBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 28, paddingBottom: 16,
-  },
-  e2eeText: { 
-    color: theme.colors.secondary, 
-    fontSize: 10, 
-    fontFamily: theme.typography.fontSemiBold, 
-    letterSpacing: 1 
-  },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { paddingHorizontal: 16, paddingBottom: 100 }, // Leave room for absolute tab bar
-  chatItem: {
+  searchBtn: { padding: 6 },
+  emptyContent: { flex: 1 },
+  item: {
+    height: ITEM_HEIGHT,
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 16, paddingHorizontal: 16,
-    marginBottom: 16, // The Breathable List token
-    borderRadius: theme.borderRadius.xl,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 16,
+    backgroundColor: t.colors.surface,
   },
-  chatItemActive: {
-    backgroundColor: theme.colors.surfaceLow,
+  info: { flex: 1, marginLeft: 14, justifyContent: 'center' },
+  topRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 3,
   },
-  activePill: {
+  name: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.md,
+    color: t.colors.text, flex: 1, marginRight: 8,
+  },
+  time: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: 12,
+    color: t.colors.online,
+  },
+  sub: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textMuted,
+  },
+  separator: {
+    height: 0.5, marginLeft: 84,
+    backgroundColor: t.colors.borderLight,
+  },
+  fab: {
     position: 'absolute',
-    left: 4,
-    width: 4,
-    height: 24,
-    borderRadius: 2,
-    backgroundColor: theme.colors.secondary,
-  },
-  avatarGroup: { marginRight: 16 },
-  avatar: {
-    width: 56, height: 56, borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.surfaceHigh,
+    right: 18, bottom: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: t.colors.primary,
     justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { color: theme.colors.primary, fontSize: 18, fontFamily: theme.typography.fontSemiBold },
-  chatInfo: { flex: 1, justifyContent: 'center' },
-  userName: { 
-    fontFamily: theme.typography.fontSemiBold, 
-    fontSize: theme.fontSize.lg, 
-    color: theme.colors.primary, 
-    letterSpacing: 0.5, 
-    marginBottom: 4 
-  },
-  lastMessage: { 
-    fontFamily: theme.typography.fontLight, 
-    fontSize: theme.fontSize.sm, 
-    color: theme.colors.textVariant 
-  },
-  chatMeta: { alignItems: 'flex-end', justifyContent: 'center' },
-  metaText: {
-    fontFamily: theme.typography.fontSemiBold,
-    fontSize: 10,
-    color: theme.colors.outlineVariant,
-    letterSpacing: 1,
-  },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  emptyText: { 
-    color: theme.colors.textDisabled, 
-    fontSize: theme.fontSize.xs, 
-    fontFamily: theme.typography.fontSemiBold, 
-    marginTop: 16, 
-    letterSpacing: 1 
+    ...t.shadow.lg,
   },
 });

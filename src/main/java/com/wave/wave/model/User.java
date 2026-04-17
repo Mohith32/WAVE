@@ -1,8 +1,8 @@
 package com.wave.wave.model;
 
-import java.util.UUID;
-
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "users")
@@ -21,8 +21,14 @@ public class User {
     @Column(nullable = false)
     private String displayName;
 
+    @Column(unique = true)
+    private String username;
+
     @Column(columnDefinition = "TEXT")
     private String publicKey;
+
+    @Column(columnDefinition = "TEXT")
+    private String bio;
 
     @Column
     private String avatarUrl;
@@ -31,12 +37,6 @@ public class User {
     private boolean online = false;
 
     public User() {}
-
-    public User(String email, String password, String displayName) {
-        this.email = email;
-        this.password = password;
-        this.displayName = displayName;
-    }
 
     public UUID getUserId() { return userId; }
     public void setUserId(UUID userId) { this.userId = userId; }
@@ -50,8 +50,14 @@ public class User {
     public String getDisplayName() { return displayName; }
     public void setDisplayName(String displayName) { this.displayName = displayName; }
 
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+
     public String getPublicKey() { return publicKey; }
     public void setPublicKey(String publicKey) { this.publicKey = publicKey; }
+
+    public String getBio() { return bio; }
+    public void setBio(String bio) { this.bio = bio; }
 
     public String getAvatarUrl() { return avatarUrl; }
     public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }

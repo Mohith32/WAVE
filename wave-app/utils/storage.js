@@ -10,7 +10,7 @@ const KEYS = {
 };
 
 export const storage = {
-  saveSession: async (token, userId, email, displayName) => {
+  saveSession: async ({ token, userId, email, displayName }) => {
     await SecureStore.setItemAsync(KEYS.TOKEN, token);
     await SecureStore.setItemAsync(KEYS.USER_ID, userId);
     await SecureStore.setItemAsync(KEYS.EMAIL, email);
@@ -33,7 +33,7 @@ export const storage = {
     await SecureStore.deleteItemAsync(KEYS.DISPLAY_NAME);
   },
 
-  saveKeyPair: async (publicKey, privateKey) => {
+  saveKeyPair: async ({ publicKey, privateKey }) => {
     await SecureStore.setItemAsync(KEYS.PUBLIC_KEY, publicKey);
     await SecureStore.setItemAsync(KEYS.PRIVATE_KEY, privateKey);
   },

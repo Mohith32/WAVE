@@ -14,6 +14,8 @@ import java.util.List;
 @RequestMapping("/api/messages")
 public class MessageController {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     @Autowired
     private MessageService messageService;
 
@@ -37,7 +39,9 @@ public class MessageController {
             @RequestParam String userId2,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        Page<Message> messages = messageService.getConversationPaged(userId1, userId2, page, size);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int safePage = Math.max(page, 0);
+        Page<Message> messages = messageService.getConversationPaged(userId1, userId2, safePage, safeSize);
         return ResponseEntity.ok(ApiResponse.ok("Messages fetched", messages));
     }
 

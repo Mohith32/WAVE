@@ -1,66 +1,62 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { api, setAuthToken } from '../../utils/api';
 import { storage } from '../../utils/storage';
-import { generateKeyPair } from '../../utils/crypto';
 import { connectWebSocket } from '../../utils/websocket';
-import { theme, ghostBorder } from '../../utils/theme';
+import { generateKeyPair } from '../../utils/crypto';
+import { useTheme } from '../../utils/theme';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
+
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const handleRegister = async () => {
-    if (!displayName.trim() || !email.trim() || !password || !confirmPassword) {
-      setError('Please fill in all fields');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (!displayName.trim() || !email.trim() || !password.trim()) {
+      Alert.alert('Missing fields', 'Please fill in all fields.');
       return;
     }
     if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+      Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;
     }
 
-    setError('');
     setLoading(true);
-
     try {
       const keyPair = await generateKeyPair();
-      await storage.saveKeyPair(keyPair.publicKey, keyPair.privateKey);
+      const res = await api.register({
+        displayName: displayName.trim(),
+        email: email.trim(),
+        password,
+        publicKey: keyPair.publicKey,
+      });
 
-      const res = await api.register(email.trim(), password, displayName.trim(), keyPair.publicKey);
       if (res.success) {
-        const loginRes = await api.login(email.trim(), password);
+        const loginRes = await api.login({ email: email.trim(), password });
         if (loginRes.success) {
-          const { token, userId, email: userEmail, displayName: name } = loginRes.data;
+          const { token, userId, displayName: dn, email: userEmail } = loginRes.data;
           setAuthToken(token);
-          await storage.saveSession(token, userId, userEmail, name);
+          await storage.saveSession({ token, userId, displayName: dn, email: userEmail });
+          await storage.saveKeyPair(keyPair);
           connectWebSocket(token);
           router.replace('/(main)/chats');
-        } else {
-          router.replace('/(auth)/login');
         }
       } else {
-        setError(res.message || 'Registration failed');
+        Alert.alert('Registration failed', res.message || 'Something went wrong.');
       }
     } catch (e) {
-      setError('Connection error. Check your server.');
+      Alert.alert('Error', 'Could not connect to server.');
     } finally {
       setLoading(false);
     }
@@ -69,166 +65,150 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <View style={s.inner}>
-          
-          <View style={s.logoArea}>
-            <Text style={s.title}>SECURE NODE</Text>
-            <Text style={s.subtitle}>GENERATE YOUR LOCAL KEYS</Text>
+        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={10}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+
+        <View style={s.header}>
+          <View style={s.logoBox}>
+            <Ionicons name="person-add" size={44} color="#FFFFFF" />
           </View>
-
-          <BlurView tint="dark" intensity={40} style={[s.formCard, ghostBorder]}>
-            <View style={s.form}>
-              <View style={[s.inputWrap, ghostBorder]}>
-                <Ionicons name="person-outline" size={20} color={theme.colors.textVariant} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="Network Alias (Display Name)"
-                  placeholderTextColor={theme.colors.placeholder}
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                />
-              </View>
-
-              <View style={[s.inputWrap, ghostBorder]}>
-                <Ionicons name="mail-outline" size={20} color={theme.colors.textVariant} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="Email Address"
-                  placeholderTextColor={theme.colors.placeholder}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={[s.inputWrap, ghostBorder]}>
-                <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textVariant} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="Root Password"
-                  placeholderTextColor={theme.colors.placeholder}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={s.eyeBtn}>
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.colors.textVariant} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={[s.inputWrap, ghostBorder]}>
-                <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.textVariant} style={s.inputIcon} />
-                <TextInput
-                  style={s.input}
-                  placeholder="Verify Root Password"
-                  placeholderTextColor={theme.colors.placeholder}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showPassword}
-                />
-              </View>
-
-              {error ? <Text style={s.error}>{error}</Text> : null}
-
-              <TouchableOpacity onPress={handleRegister} disabled={loading} activeOpacity={0.8} style={s.btnWrapper}>
-                <LinearGradient
-                  colors={[theme.colors.primaryGradientStart, theme.colors.primaryGradientEnd]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={s.btn}
-                >
-                  {loading ? (
-                    <ActivityIndicator color={theme.colors.background} />
-                  ) : (
-                    <Text style={s.btnText}>INITIALIZE NODE</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <View style={s.footer}>
-                <Text style={s.footerText}>CONNECTION RESTORE? </Text>
-                <TouchableOpacity onPress={() => router.back()}>
-                  <Text style={s.footerLink}>AUTHENTICATE</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </BlurView>
-
-          <View style={[s.infoBox, ghostBorder]}>
-            <Ionicons name="hardware-chip-outline" size={18} color={theme.colors.secondary} />
-            <Text style={s.infoText}>
-              ASYMMETRIC KEYS GENERATED LOCALLY.
-            </Text>
-          </View>
-
+          <Text style={s.title}>Create an account</Text>
+          <Text style={s.tagline}>Join Wave and start messaging</Text>
         </View>
+
+        <View style={s.form}>
+          <Text style={s.label}>Display Name</Text>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={s.input}
+              placeholder="Your name"
+              placeholderTextColor={theme.colors.placeholder}
+              value={displayName}
+              onChangeText={setDisplayName}
+            />
+          </View>
+
+          <Text style={[s.label, { marginTop: 18 }]}>Email</Text>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={s.input}
+              placeholder="you@example.com"
+              placeholderTextColor={theme.colors.placeholder}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
+
+          <Text style={[s.label, { marginTop: 18 }]}>Password</Text>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={[s.input, { flex: 1 }]}
+              placeholder="Min. 6 characters"
+              placeholderTextColor={theme.colors.placeholder}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={theme.colors.textMuted}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={[s.btn, loading && s.btnDisabled]}
+            onPress={handleRegister}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={s.btnText}>CREATE ACCOUNT</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={s.link} onPress={() => router.back()}>
+          <Text style={s.linkText}>Already have an account? <Text style={s.linkBold}>Sign in</Text></Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
-  scroll: { flexGrow: 1, justifyContent: 'center' },
-  inner: { paddingHorizontal: 24, paddingVertical: 40 },
-  logoArea: { alignItems: 'flex-start', marginBottom: 24, marginLeft: 8 },
-  title: { 
-    fontFamily: theme.typography.fontSemiBold, 
-    fontSize: theme.fontSize.lg, 
-    color: theme.colors.primary, 
-    letterSpacing: 3 
+const makeStyles = (t) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.colors.background },
+  scroll: { flexGrow: 1, padding: 24, paddingTop: 60 },
+
+  backBtn: { padding: 4, marginBottom: 16 },
+
+  header: { alignItems: 'center', marginBottom: 28 },
+  logoBox: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: t.colors.primary,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 18,
   },
-  subtitle: { 
-    fontFamily: theme.typography.fontLight, 
-    fontSize: theme.fontSize.xs, 
-    color: theme.colors.secondary, 
-    marginTop: 4, 
-    letterSpacing: 2 
+  title: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: 24, color: t.colors.text, textAlign: 'center',
   },
-  formCard: {
-    padding: theme.spacing.xl,
-    borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.surfaceBase,
-    overflow: 'hidden',
-    ...theme.elevation.floating,
+  tagline: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.md, color: t.colors.textSecondary,
+    marginTop: 6, textAlign: 'center',
   },
-  form: { gap: theme.spacing.lg },
+
+  form: { paddingHorizontal: 4 },
+  label: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.sm,
+    color: t.colors.primary,
+    marginBottom: 4,
+  },
   inputWrap: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: theme.colors.surfaceLow,
-    borderRadius: theme.borderRadius.xl,
-    paddingHorizontal: 20, height: 56,
+    borderBottomWidth: 1.5,
+    borderBottomColor: t.colors.primary,
+    paddingBottom: 6,
   },
-  inputIcon: { marginRight: 12 },
-  input: { 
-    flex: 1, color: theme.colors.text, 
-    fontFamily: theme.typography.fontRegular, fontSize: theme.fontSize.md,
-    letterSpacing: 0.5,
+  input: {
+    flex: 1,
+    color: t.colors.text,
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.lg,
+    paddingVertical: 4,
   },
-  eyeBtn: { padding: 4 },
-  error: { color: theme.colors.error, fontSize: theme.fontSize.sm, fontFamily: theme.typography.fontRegular, textAlign: 'center' },
-  btnWrapper: {
-    ...theme.elevation.floating,
-    marginTop: 8,
-  },
+
   btn: {
-    height: 56, borderRadius: theme.borderRadius.xl,
+    height: 52, borderRadius: t.borderRadius.md,
+    backgroundColor: t.colors.primary,
     justifyContent: 'center', alignItems: 'center',
+    marginTop: 28,
   },
-  btnText: { 
-    color: theme.colors.background, fontSize: theme.fontSize.sm, 
-    fontFamily: theme.typography.fontSemiBold, letterSpacing: theme.typography.trackingLabel 
+  btnDisabled: { opacity: 0.6 },
+  btnText: {
+    color: '#fff',
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.md,
+    letterSpacing: 1,
   },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 12 },
-  footerText: { color: theme.colors.textVariant, fontSize: theme.fontSize.xs, fontFamily: theme.typography.fontLight, letterSpacing: 1 },
-  footerLink: { color: theme.colors.secondary, fontSize: theme.fontSize.xs, fontFamily: theme.typography.fontSemiBold, letterSpacing: 1 },
-  
-  infoBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    marginTop: 24, paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: theme.colors.surfaceBase,
-    borderRadius: theme.borderRadius.lg,
-    overflow: 'hidden',
+
+  link: { alignItems: 'center', marginTop: 24 },
+  linkText: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textSecondary,
   },
-  infoText: { flex: 1, color: theme.colors.secondary, fontSize: 10, fontFamily: theme.typography.fontSemiBold, tracking: 1 },
+  linkBold: {
+    fontFamily: t.typography.fontSemiBold,
+    color: t.colors.primary,
+  },
 });

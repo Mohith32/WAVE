@@ -5,16 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wave.wave.model.GroupMember;
 import com.wave.wave.model.Message;
 import com.wave.wave.security.JwtUtil;
+import com.wave.wave.service.FriendshipService;
 import com.wave.wave.service.GroupService;
 import com.wave.wave.service.MessageService;
 import com.wave.wave.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -34,12 +38,29 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private UserService userService;
 
     @Autowired
+    private FriendshipService friendshipService;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private RedisMessageSubscriber redisMessageSubscriber;
+
+    @Value("${wave.websocket.redis-channel:wave:ws:messages}")
+    private String redisChannel;
+
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+
+    @PostConstruct
+    public void init() {
+        redisMessageSubscriber.setLocalSessions(sessions);
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -56,6 +77,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         try {
             userService.setOnlineStatus(UUID.fromString(userId), true);
         } catch (Exception ignored) {}
+
         broadcastPresence(userId, true);
     }
 
@@ -71,29 +93,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         String type = json.has("type") ? json.get("type").asText() : "message";
 
         switch (type) {
-            case "message":
-                handleChatMessage(userId, json);
-                break;
-            case "group_message":
-                handleGroupMessage(userId, json);
-                break;
-            case "typing":
-                handleTypingIndicator(userId, json);
-                break;
-            case "read_receipt":
-                handleReadReceipt(userId, json);
-                break;
-            default:
-                break;
+            case "message" -> handleChatMessage(userId, json);
+            case "group_message" -> handleGroupMessage(userId, json);
+            case "typing" -> handleTypingIndicator(userId, json);
+            case "read_receipt" -> handleReadReceipt(userId, json);
         }
     }
 
     private void handleChatMessage(String senderId, JsonNode json) throws Exception {
+        String receiverId = json.get("receiverId").asText();
+        if (!friendshipService.areFriends(senderId, receiverId)) return;
+
         Message msg = new Message();
         msg.setSenderId(senderId);
-        msg.setReceiverId(json.get("receiverId").asText());
+        msg.setReceiverId(receiverId);
         msg.setEncryptedContent(json.has("encryptedContent") ? json.get("encryptedContent").asText() : null);
         msg.setEncryptedAesKey(json.has("encryptedAesKey") ? json.get("encryptedAesKey").asText() : null);
+        msg.setSenderEncryptedAesKey(json.has("senderEncryptedAesKey") ? json.get("senderEncryptedAesKey").asText() : null);
         msg.setIv(json.has("iv") ? json.get("iv").asText() : null);
         msg.setMessageType(json.has("messageType") ? json.get("messageType").asText() : "TEXT");
         msg.setFileName(json.has("fileName") ? json.get("fileName").asText() : null);
@@ -103,36 +119,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         Message saved = messageService.saveMessage(msg);
 
-        String msgJson = objectMapper.writeValueAsString(Map.of(
-                "type", "message",
-                "data", saved
-        ));
+        String msgJson = objectMapper.writeValueAsString(Map.of("type", "message", "data", saved));
+        String sentJson = objectMapper.writeValueAsString(Map.of("type", "message_sent", "data", saved));
 
-        WebSocketSession receiverSession = sessions.get(msg.getReceiverId());
-        if (receiverSession != null && receiverSession.isOpen()) {
-            receiverSession.sendMessage(new TextMessage(msgJson));
-        }
-        WebSocketSession senderSession = sessions.get(senderId);
-        if (senderSession != null && senderSession.isOpen()) {
-            senderSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                    "type", "message_sent",
-                    "data", saved
-            ))));
-        }
+        deliverOrPublish(msg.getReceiverId(), msgJson);
+        deliverOrPublish(senderId, sentJson);
     }
 
     private void handleGroupMessage(String senderId, JsonNode json) throws Exception {
         String groupId = json.get("groupId").asText();
-
-        if (!groupService.isMember(groupId, senderId)) {
-            return;
-        }
+        if (!groupService.isMember(groupId, senderId)) return;
 
         Message msg = new Message();
         msg.setSenderId(senderId);
         msg.setGroupId(groupId);
         msg.setEncryptedContent(json.has("encryptedContent") ? json.get("encryptedContent").asText() : null);
         msg.setEncryptedAesKey(json.has("encryptedAesKey") ? json.get("encryptedAesKey").asText() : null);
+        msg.setSenderEncryptedAesKey(json.has("senderEncryptedAesKey") ? json.get("senderEncryptedAesKey").asText() : null);
         msg.setIv(json.has("iv") ? json.get("iv").asText() : null);
         msg.setMessageType(json.has("messageType") ? json.get("messageType").asText() : "TEXT");
         msg.setFileName(json.has("fileName") ? json.get("fileName").asText() : null);
@@ -141,18 +144,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         msg.setTimestamp(LocalDateTime.now());
 
         Message saved = messageService.saveMessage(msg);
-
-        String msgJson = objectMapper.writeValueAsString(Map.of(
-                "type", "group_message",
-                "data", saved
-        ));
+        String msgJson = objectMapper.writeValueAsString(Map.of("type", "group_message", "data", saved));
 
         List<GroupMember> members = groupService.getGroupMembers(groupId);
         for (GroupMember member : members) {
-            WebSocketSession memberSession = sessions.get(member.getUserId());
-            if (memberSession != null && memberSession.isOpen()) {
-                memberSession.sendMessage(new TextMessage(msgJson));
-            }
+            deliverOrPublish(member.getUserId(), msgJson);
         }
     }
 
@@ -167,34 +163,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "groupId", groupId != null ? groupId : ""
         ));
 
-        if (groupId != null) {
+        if (groupId != null && !groupId.isEmpty()) {
             List<GroupMember> members = groupService.getGroupMembers(groupId);
             for (GroupMember member : members) {
                 if (!member.getUserId().equals(senderId)) {
-                    WebSocketSession s = sessions.get(member.getUserId());
-                    if (s != null && s.isOpen()) {
-                        s.sendMessage(new TextMessage(payload));
-                    }
+                    deliverOrPublish(member.getUserId(), payload);
                 }
             }
-        } else if (receiverId != null) {
-            WebSocketSession s = sessions.get(receiverId);
-            if (s != null && s.isOpen()) {
-                s.sendMessage(new TextMessage(payload));
+        } else if (receiverId != null && !receiverId.isEmpty()) {
+            if (friendshipService.areFriends(senderId, receiverId)) {
+                deliverOrPublish(receiverId, payload);
             }
         }
     }
 
     private void handleReadReceipt(String senderId, JsonNode json) throws Exception {
         String receiverId = json.has("receiverId") ? json.get("receiverId").asText() : null;
-        if (receiverId != null) {
-            WebSocketSession s = sessions.get(receiverId);
-            if (s != null && s.isOpen()) {
-                s.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                        "type", "read_receipt",
-                        "readBy", senderId
-                ))));
-            }
+        if (receiverId != null && friendshipService.areFriends(senderId, receiverId)) {
+            String payload = objectMapper.writeValueAsString(Map.of("type", "read_receipt", "readBy", senderId));
+            deliverOrPublish(receiverId, payload);
         }
     }
 
@@ -210,6 +197,31 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    private void deliverOrPublish(String targetUserId, String payload) {
+        WebSocketSession localSession = sessions.get(targetUserId);
+        if (localSession != null && localSession.isOpen()) {
+            try {
+                synchronized (localSession) {
+                    localSession.sendMessage(new TextMessage(payload));
+                }
+            } catch (Exception e) {
+                publishToRedis(targetUserId, payload);
+            }
+        } else {
+            publishToRedis(targetUserId, payload);
+        }
+    }
+
+    private void publishToRedis(String targetUserId, String payload) {
+        try {
+            String envelope = objectMapper.writeValueAsString(Map.of(
+                    "targetUserId", targetUserId,
+                    "payload", payload
+            ));
+            redisTemplate.convertAndSend(redisChannel, envelope);
+        } catch (Exception ignored) {}
+    }
+
     private void broadcastPresence(String userId, boolean online) {
         try {
             String payload = objectMapper.writeValueAsString(Map.of(
@@ -219,9 +231,17 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             ));
             for (WebSocketSession s : sessions.values()) {
                 if (s.isOpen()) {
-                    s.sendMessage(new TextMessage(payload));
+                    try {
+                        synchronized (s) {
+                            s.sendMessage(new TextMessage(payload));
+                        }
+                    } catch (Exception ignored) {}
                 }
             }
+            redisTemplate.convertAndSend(redisChannel, objectMapper.writeValueAsString(Map.of(
+                    "targetUserId", "__broadcast__presence__",
+                    "payload", payload
+            )));
         } catch (Exception ignored) {}
     }
 
@@ -230,9 +250,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (query == null) return null;
         for (String pair : query.split("&")) {
             String[] kv = pair.split("=", 2);
-            if (kv.length == 2 && kv[0].equals(param)) {
-                return kv[1];
-            }
+            if (kv.length == 2 && kv[0].equals(param)) return kv[1];
         }
         return null;
     }

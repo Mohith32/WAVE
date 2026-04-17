@@ -1,84 +1,60 @@
-import { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { GiftedChat, Bubble, Send, InputToolbar } from 'react-native-gifted-chat';
+import { GiftedChat, Bubble, Send, InputToolbar, Composer } from 'react-native-gifted-chat';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import { api } from '../../../utils/api';
 import { storage } from '../../../utils/storage';
 import { sendGroupMessage, addMessageHandler } from '../../../utils/websocket';
-import { theme, ghostBorder } from '../../../utils/theme';
-import { generateAesKey, generateIv, encryptMessage, decryptMessage } from '../../../utils/crypto';
+import { useTheme } from '../../../utils/theme';
+import { getAvatarColor } from '../../../components/Avatar';
 
 export default function GroupChatScreen() {
   const { id: groupId, name: groupName } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
+  const theme = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
+
   const [messages, setMessages] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
-  const [currentUserKeys, setCurrentUserKeys] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     initChat();
-
     const removeHandler = addMessageHandler((msg) => {
       if (msg.type === 'group_message' && msg.data.groupId === groupId) {
         handleIncomingMessage(msg.data);
       }
     });
-
     return () => removeHandler();
   }, [groupId]);
 
   const initChat = async () => {
     const session = await storage.getSession();
     setCurrentUserId(session?.userId);
-    
-    const keys = await storage.getKeyPair();
-    setCurrentUserKeys(keys);
-
     try {
       const histRes = await api.getGroupMessages(groupId);
       if (histRes.success) {
-        const decryptedMessages = await Promise.all(
-          histRes.data.map(m => processGroupMessage(m, session.userId))
-        );
-        setMessages(decryptedMessages.reverse());
+        const mapped = histRes.data.map(m => processGroupMessage(m, session.userId));
+        setMessages(mapped.reverse());
       }
     } catch (e) {
       console.error('Failed to load group chat', e);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const processGroupMessage = async (m, myUserId) => {
-    let text = m.encryptedContent ? '[Group Payload]' : (m.messageType === 'IMAGE' ? '📷 Image' : 'Message');
-    
-    if (m.encryptedContent && m.iv) {
-      if (m.senderId === myUserId) {
-        text = "You: " + text;
-      }
-    }
+  const processGroupMessage = (m, myUserId) => ({
+    _id: m.messageId,
+    text: m.encryptedContent || (m.messageType === 'IMAGE' ? '' : ''),
+    createdAt: new Date(m.timestamp),
+    user: { _id: m.senderId, name: m.senderId === myUserId ? 'Me' : 'Member' },
+    image: m.messageType === 'IMAGE' ? api.getFileUrl(m.fileName) : undefined,
+    sent: true,
+  });
 
-    return {
-      _id: m.messageId,
-      text: text,
-      createdAt: new Date(m.timestamp),
-      user: {
-        _id: m.senderId,
-        name: m.senderId === myUserId ? 'Me' : 'Node',
-      },
-      image: m.messageType === 'IMAGE' ? api.getFileUrl(m.fileName) : undefined,
-    };
-  };
-
-  const handleIncomingMessage = async (m) => {
-    const msg = await processGroupMessage(m, currentUserId);
+  const handleIncomingMessage = (m) => {
+    const msg = processGroupMessage(m, currentUserId);
     setMessages(prev => GiftedChat.append(prev, [msg]));
   };
 
@@ -86,91 +62,85 @@ export default function GroupChatScreen() {
     const msg = newMessages[0];
     const text = msg.text.trim();
     if (!text) return;
-
-    // Optimistic
     const pendingMsg = {
-      ...msg,
-      _id: Math.random().toString(),
-      pending: true,
+      ...msg, _id: Math.random().toString(), pending: true,
       user: { _id: currentUserId },
     };
     setMessages(prev => GiftedChat.append(prev, [pendingMsg]));
-
-    sendGroupMessage(groupId, text, "group_aes_key_mock", "mock_iv", 'TEXT');
+    sendGroupMessage(groupId, text, 'none', 'none', 'none', 'TEXT');
   }, [groupId, currentUserId]);
 
-  const pickImage = async () => {};
+  const renderBubble = useCallback((props) => (
+    <Bubble
+      {...props}
+      wrapperStyle={{
+        right: {
+          backgroundColor: theme.colors.bubbleSent,
+          borderRadius: 14, borderBottomRightRadius: 4, marginBottom: 2,
+        },
+        left: {
+          backgroundColor: theme.colors.bubbleReceived,
+          borderRadius: 14, borderBottomLeftRadius: 4, marginBottom: 2,
+          borderWidth: theme.isDark ? 0 : 0.5, borderColor: theme.colors.bubbleBorder,
+        },
+      }}
+      textStyle={{
+        right: {
+          color: theme.colors.bubbleSentText,
+          fontFamily: theme.typography.fontRegular,
+          fontSize: theme.fontSize.md, lineHeight: 21,
+        },
+        left: {
+          color: theme.colors.bubbleReceivedText,
+          fontFamily: theme.typography.fontRegular,
+          fontSize: theme.fontSize.md, lineHeight: 21,
+        },
+      }}
+      timeTextStyle={{
+        right: { color: theme.colors.bubbleSentTime, fontSize: 11 },
+        left: { color: theme.colors.bubbleReceivedTime, fontSize: 11 },
+      }}
+      usernameStyle={{ color: getAvatarColor(props.currentMessage?.user?.name), fontFamily: theme.typography.fontSemiBold, fontSize: 12 }}
+    />
+  ), [theme]);
 
-  const renderBubble = (props) => {
-    return (
-      <Bubble
-        {...props}
-        wrapperStyle={{
-          right: [
-            { backgroundColor: theme.colors.surfaceHigh },
-            ghostBorder,
-            { borderTopLeftRadius: theme.borderRadius.xl, borderBottomLeftRadius: theme.borderRadius.xl, borderTopRightRadius: theme.borderRadius.xl, borderBottomRightRadius: theme.borderRadius.sm }
-          ],
-          left: [
-            { backgroundColor: theme.colors.surfaceBase },
-            ghostBorder,
-            { borderTopLeftRadius: theme.borderRadius.xl, borderBottomLeftRadius: theme.borderRadius.sm, borderTopRightRadius: theme.borderRadius.xl, borderBottomRightRadius: theme.borderRadius.xl }
-          ],
-        }}
-        containerToNextStyle={{
-           right: { borderBottomRightRadius: theme.borderRadius.sm },
-           left: { borderBottomLeftRadius: theme.borderRadius.sm }
-        }}
-        textStyle={{
-          right: { color: theme.colors.text, fontSize: theme.fontSize.md, fontFamily: theme.typography.fontRegular, letterSpacing: 0.3 },
-          left: { color: theme.colors.text, fontSize: theme.fontSize.md, fontFamily: theme.typography.fontRegular, letterSpacing: 0.3 },
-        }}
-        timeTextStyle={{
-          right: { color: theme.colors.textVariant, fontFamily: theme.typography.fontLight, fontSize: 10 },
-          left: { color: theme.colors.textVariant, fontFamily: theme.typography.fontLight, fontSize: 10 },
-        }}
-      />
-    );
-  };
-
-  const renderSend = (props) => (
-    <Send {...props} containerStyle={{ justifyContent: 'center', marginRight: 16 }}>
-      <Ionicons name="paper-plane" size={24} color={theme.colors.primary} />
+  const renderSend = useCallback((props) => (
+    <Send {...props} containerStyle={s.sendContainer}>
+      <View style={s.sendBtn}>
+        <Ionicons name="send" size={18} color="#fff" />
+      </View>
     </Send>
-  );
+  ), [s]);
 
-  const renderInputToolbar = (props) => (
-    <View style={{ marginBottom: Math.max(insets.bottom, 12), paddingHorizontal: 16 }}>
-      <BlurView tint="dark" intensity={60} style={[s.inputToolbarBlur, ghostBorder]}>
-        <InputToolbar
-          {...props}
-          containerStyle={{
-            backgroundColor: 'transparent',
-            borderTopWidth: 0,
-            paddingVertical: 2,
-          }}
-          primaryStyle={{ alignItems: 'center' }}
-        />
-      </BlurView>
-    </View>
-  );
+  const renderInputToolbar = useCallback((props) => (
+    <InputToolbar {...props} containerStyle={s.inputToolbar} primaryStyle={{ alignItems: 'center' }} />
+  ), [s]);
+
+  const renderComposer = useCallback((props) => (
+    <Composer {...props} textInputStyle={s.textInput} placeholderTextColor={theme.colors.textMuted} />
+  ), [s, theme]);
+
+  const bg = getAvatarColor(groupName);
 
   return (
     <View style={s.container}>
-      <View style={[s.header, { paddingTop: insets.top || 40 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
+      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
+        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
+          <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
         </TouchableOpacity>
-        <View style={s.headerInfo}>
-          <Text style={s.headerName}>{groupName}</Text>
-          <Text style={s.memberCount}>MULTI-NODE CHANNEL</Text>
+        <View style={[s.groupAvatar, { backgroundColor: bg }]}>
+          <Ionicons name="people" size={22} color="#fff" />
         </View>
-        <TouchableOpacity style={s.iconBtn}>
-          <Ionicons name="information-circle-outline" size={20} color={theme.colors.primary} />
+        <View style={s.headerInfo}>
+          <Text style={s.headerName} numberOfLines={1}>{groupName}</Text>
+          <Text style={s.headerStatus}>group</Text>
+        </View>
+        <TouchableOpacity style={s.headerBtn} hitSlop={8}>
+          <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
 
-      <View style={s.chatContainer}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.chatBg }}>
         <GiftedChat
           messages={messages}
           onSend={m => onSend(m)}
@@ -178,58 +148,72 @@ export default function GroupChatScreen() {
           renderBubble={renderBubble}
           renderSend={renderSend}
           renderInputToolbar={renderInputToolbar}
+          renderComposer={renderComposer}
           alwaysShowSend
           scrollToBottom
           renderUsernameOnMessage
-          placeholder="BROADCAST MESSAGE..."
-          textInputStyle={s.textInput}
-          bottomOffset={0}
+          placeholder="Message"
+          renderAvatar={null}
+          bottomOffset={insets.bottom}
+          messagesContainerStyle={{ backgroundColor: theme.colors.chatBg }}
         />
       </View>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
+const makeStyles = (t) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingBottom: 16, paddingHorizontal: 12,
+    backgroundColor: t.colors.headerBg,
+    paddingBottom: 10, paddingHorizontal: 8,
+    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
   },
-  backBtn: { padding: 8 },
-  headerInfo: { flex: 1, marginLeft: 12 },
-  headerName: { 
-    fontSize: theme.fontSize.lg, 
-    fontFamily: theme.typography.fontSemiBold, 
-    color: theme.colors.primary, 
-    letterSpacing: 1, 
-    marginBottom: 2 
-  },
-  memberCount: { 
-    fontSize: 9, 
-    fontFamily: theme.typography.fontSemiBold, 
-    color: theme.colors.secondary, 
-    letterSpacing: 0.5 
-  },
-  iconBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: theme.colors.surfaceLow,
+  backBtn: { padding: 6, marginRight: 2 },
+  groupAvatar: {
+    width: 38, height: 38, borderRadius: 19,
     justifyContent: 'center', alignItems: 'center',
   },
-  chatContainer: { flex: 1 },
-  inputToolbarBlur: {
-    borderRadius: theme.borderRadius.xl,
-    overflow: 'hidden',
+  headerInfo: { flex: 1, marginLeft: 10 },
+  headerName: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.lg,
+    color: t.colors.text,
+  },
+  headerStatus: {
+    fontSize: 12,
+    fontFamily: t.typography.fontRegular,
+    color: t.colors.textSecondary,
+    marginTop: 1,
+  },
+  headerBtn: { padding: 8 },
+
+  inputToolbar: {
+    backgroundColor: t.colors.surface,
+    borderTopWidth: 0.5, borderTopColor: t.colors.headerBorder,
+    paddingTop: 4, paddingBottom: 4, paddingHorizontal: 4,
+    minHeight: 52,
+  },
+  sendContainer: {
+    justifyContent: 'center', alignItems: 'center',
+    paddingRight: 6, paddingBottom: 4,
+  },
+  sendBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: t.colors.primary,
+    justifyContent: 'center', alignItems: 'center',
   },
   textInput: {
-    color: theme.colors.primary,
-    fontFamily: theme.typography.fontRegular,
-    fontSize: theme.fontSize.sm,
-    letterSpacing: 1,
-    paddingTop: 10,
-    marginTop: 0,
-    marginBottom: 0,
-    marginLeft: 0,
+    color: t.colors.text,
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.md,
+    backgroundColor: t.colors.inputBg,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingTop: 10, paddingBottom: 10,
+    marginLeft: 4, marginRight: 4,
+    marginTop: 4, marginBottom: 4,
+    minHeight: 40,
   },
 });

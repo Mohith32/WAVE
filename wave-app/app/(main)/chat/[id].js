@@ -1,344 +1,379 @@
-import { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { GiftedChat, Bubble, Send, InputToolbar } from 'react-native-gifted-chat';
+import { GiftedChat, Bubble, Send, InputToolbar, Composer } from 'react-native-gifted-chat';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '../../../utils/api';
 import { storage } from '../../../utils/storage';
 import { sendChatMessage, addMessageHandler, sendTyping, sendReadReceipt } from '../../../utils/websocket';
-import { generateAesKey, generateIv, encryptMessage, decryptMessage, encryptAesKey, decryptAesKey } from '../../../utils/crypto';
-import { theme, ghostBorder } from '../../../utils/theme';
+import {
+  generateAesKey, generateIv, encryptMessage, decryptMessage,
+  encryptAesKey, decryptAesKey,
+} from '../../../utils/crypto';
+import Avatar from '../../../components/Avatar';
+import { useTheme } from '../../../utils/theme';
+
+const PAGE_SIZE = 30;
 
 export default function ChatRoomScreen() {
   const { id: receiverId, name: receiverName } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
+  const theme = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
+
   const [messages, setMessages] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const [currentUserKeys, setCurrentUserKeys] = useState(null);
-  const [receiverKey, setReceiverKey] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
-  const [typeTimeout, setTypeTimeout] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [hasEarlier, setHasEarlier] = useState(false);
+  const [online, setOnline] = useState(false);
+
+  const currentUserId = useRef(null);
+  const myKeys = useRef(null);
+  const receiverPublicKey = useRef(null);
+  const pageRef = useRef(0);
+  const typingTimeout = useRef(null);
 
   useEffect(() => {
     initChat();
-
-    const removeHandler = addMessageHandler((msg) => {
-      if (msg.type === 'message' && (msg.data.senderId === receiverId || msg.data.receiverId === receiverId)) {
-        handleIncomingMessage(msg.data);
-      } else if (msg.type === 'message_sent' && msg.data.receiverId === receiverId) {
-        handleSentMessageConfirmation(msg.data);
-      } else if (msg.type === 'typing' && msg.senderId === receiverId) {
-        setIsTyping(true);
-        if (typeTimeout) clearTimeout(typeTimeout);
-        setTypeTimeout(setTimeout(() => setIsTyping(false), 3000));
-      } else if (msg.type === 'read_receipt' && msg.readBy === receiverId) {
-        setMessages(prev => prev.map(m => m.user._id === currentUserId ? { ...m, received: true, pending: false } : m));
-      }
-    });
-
-    return () => removeHandler();
+    const remove = addMessageHandler(handleWsMessage);
+    return () => {
+      remove();
+      if (typingTimeout.current) clearTimeout(typingTimeout.current);
+    };
   }, [receiverId]);
 
   const initChat = async () => {
     const session = await storage.getSession();
-    setCurrentUserId(session?.userId);
-    
-    const keys = await storage.getKeyPair();
-    setCurrentUserKeys(keys);
+    currentUserId.current = session?.userId;
+    myKeys.current = await storage.getKeyPair();
 
-    try {
-      const userRes = await api.getUser(receiverId);
-      if (userRes.success) {
-        setReceiverKey(userRes.data.publicKey);
-      }
+    const [userRes, histRes] = await Promise.all([
+      api.getUser(receiverId),
+      api.getConversationPaged(session?.userId, receiverId, 0, PAGE_SIZE),
+    ]);
 
-      const histRes = await api.getConversation(session?.userId, receiverId);
-      if (histRes.success && keys) {
-        const decryptedMessages = await Promise.all(
-          histRes.data.map(m => processStoredMessage(m, keys.privateKey, session.userId))
-        );
-        setMessages(decryptedMessages.reverse());
-      }
-      
-      if (histRes.data?.some(m => m.senderId === receiverId && !m.read)) {
-        sendReadReceipt(receiverId);
-      }
-    } catch (e) {
-      console.error('Failed to init chat', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const processStoredMessage = async (m, myPrivateKey, myUserId) => {
-    let text = '[Unable to decrypt]';
-    
-    if (m.encryptedContent && m.encryptedAesKey && m.iv) {
-      try {
-        if (m.senderId === myUserId) {
-          text = await decryptMessage(m.encryptedContent, m.encryptedAesKey, m.iv);
-        } else {
-          const aesKey = await decryptAesKey(m.encryptedAesKey, myPrivateKey);
-          text = await decryptMessage(m.encryptedContent, aesKey, m.iv);
-        }
-      } catch (e) {
-        console.log('Decryption failed for msg', m.messageId);
-      }
+    if (userRes.success) {
+      receiverPublicKey.current = userRes.data.publicKey;
+      setOnline(!!userRes.data.online);
     }
 
-    return {
-      _id: m.messageId,
-      text: m.messageType === 'TEXT' ? text : (m.messageType === 'IMAGE' ? '📷 Image' : '📄 Document'),
-      createdAt: new Date(m.timestamp),
-      user: {
-        _id: m.senderId,
-        name: m.senderId === myUserId ? 'Me' : receiverName,
-      },
-      image: m.messageType === 'IMAGE' ? api.getFileUrl(m.fileName) : undefined,
-      received: m.read || m.delivered,
-    };
-  };
+    if (histRes.success && myKeys.current) {
+      const content = histRes.data.content || histRes.data;
+      const decrypted = await decryptBatch(content, session.userId);
+      setMessages(decrypted.reverse());
+      setHasEarlier((histRes.data.totalPages ?? 1) > 1);
+    }
 
-  const handleIncomingMessage = async (m) => {
-    if (!currentUserKeys) return;
-    const msg = await processStoredMessage(m, currentUserKeys.privateKey, currentUserId);
-    setMessages(previousMessages => GiftedChat.append(previousMessages, [msg]));
-    
-    if (m.senderId === receiverId) {
+    if (histRes.data?.content?.some(m => m.senderId === receiverId)) {
       sendReadReceipt(receiverId);
     }
   };
 
-  const handleSentMessageConfirmation = (m) => {};
+  const decryptBatch = async (msgs, myUserId) =>
+    Promise.all(msgs.map(m => processMessage(m, myUserId)));
+
+  const processMessage = async (m, myUserId) => {
+    let text = '[encrypted]';
+    if (m.iv && myKeys.current) {
+      try {
+        if (m.senderId === myUserId && m.senderEncryptedAesKey) {
+          const aesKey = await decryptAesKey(m.senderEncryptedAesKey, myKeys.current.privateKey);
+          text = await decryptMessage(m.encryptedContent, aesKey, m.iv);
+        } else if (m.senderId !== myUserId && m.encryptedAesKey) {
+          const aesKey = await decryptAesKey(m.encryptedAesKey, myKeys.current.privateKey);
+          text = await decryptMessage(m.encryptedContent, aesKey, m.iv);
+        }
+      } catch {
+        text = '[Decryption failed]';
+      }
+    } else if (m.messageType === 'TEXT' && !m.encryptedContent) {
+      text = m.content || '';
+    }
+
+    return {
+      _id: m.messageId,
+      text: m.messageType === 'TEXT' ? text : (m.messageType === 'IMAGE' ? '' : '📄 File'),
+      createdAt: new Date(m.timestamp),
+      user: { _id: m.senderId, name: m.senderId === myUserId ? 'Me' : receiverName },
+      image: m.messageType === 'IMAGE' ? api.getFileUrl(m.fileName) : undefined,
+      sent: true,
+      received: !!m.read,
+    };
+  };
+
+  const handleWsMessage = useCallback(async (msg) => {
+    if (msg.type === 'message' && (msg.data.senderId === receiverId || msg.data.receiverId === receiverId)) {
+      const processed = await processMessage(msg.data, currentUserId.current);
+      setMessages(prev => GiftedChat.append(prev, [processed]));
+      if (msg.data.senderId === receiverId) sendReadReceipt(receiverId);
+    } else if (msg.type === 'typing' && msg.senderId === receiverId) {
+      setIsTyping(true);
+      if (typingTimeout.current) clearTimeout(typingTimeout.current);
+      typingTimeout.current = setTimeout(() => setIsTyping(false), 3000);
+    } else if (msg.type === 'read_receipt') {
+      setMessages(prev => prev.map(m =>
+        m.user._id === currentUserId.current ? { ...m, received: true } : m
+      ));
+    } else if (msg.type === 'presence' && msg.userId === receiverId) {
+      setOnline(!!msg.online);
+    }
+  }, [receiverId]);
+
+  const onLoadEarlier = useCallback(async () => {
+    if (loadingEarlier || !hasEarlier) return;
+    setLoadingEarlier(true);
+    pageRef.current++;
+    const res = await api.getConversationPaged(currentUserId.current, receiverId, pageRef.current, PAGE_SIZE);
+    if (res.success) {
+      const content = res.data.content || [];
+      const decrypted = await decryptBatch(content, currentUserId.current);
+      setMessages(prev => [...prev, ...decrypted.reverse()]);
+      setHasEarlier((res.data.totalPages ?? 1) > pageRef.current + 1);
+    }
+    setLoadingEarlier(false);
+  }, [loadingEarlier, hasEarlier, receiverId]);
 
   const onSend = useCallback(async (newMessages = []) => {
-    const msg = newMessages[0];
-    const text = msg.text.trim();
-    if (!text || !receiverKey) return;
+    const text = newMessages[0]?.text?.trim();
+    if (!text || !receiverPublicKey.current || !myKeys.current) return;
 
-    const pendingMsg = {
-      ...msg,
-      _id: Math.random().toString(),
+    const pending = {
+      ...newMessages[0],
+      _id: `pending-${Date.now()}`,
       pending: true,
-      user: { _id: currentUserId },
+      sent: false,
+      user: { _id: currentUserId.current },
     };
-    setMessages(previousMessages => GiftedChat.append(previousMessages, [pendingMsg]));
+    setMessages(prev => GiftedChat.append(prev, [pending]));
 
     try {
       const aesKey = await generateAesKey();
       const iv = await generateIv();
-      
-      const encryptedContent = await encryptMessage(text, aesKey, iv);
-      const encryptedAesKey = await encryptAesKey(aesKey, receiverKey);
-      
-      sendChatMessage(receiverId, encryptedContent, encryptedAesKey, iv, 'TEXT');
-    } catch (e) {
-      console.error('Failed to send encrypted msg', e);
-    }
-  }, [receiverKey, currentUserId]);
+      const encContent = await encryptMessage(text, aesKey, iv);
+      const encAesKeyReceiver = await encryptAesKey(aesKey, receiverPublicKey.current);
+      const encAesKeySender = await encryptAesKey(aesKey, myKeys.current.publicKey);
+      sendChatMessage(receiverId, encContent, encAesKeyReceiver, encAesKeySender, iv, 'TEXT');
+    } catch {}
+  }, [receiverId]);
 
-  const onInputTextChanged = (text) => {
-    if (text.length > 0) {
-      sendTyping(receiverId);
-    }
-  };
+  const onInputTextChanged = useCallback((text) => {
+    if (text.length > 0) sendTyping(receiverId);
+  }, [receiverId]);
 
-  const pickImage = async () => {
+  const pickImage = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
+      allowsEditing: true, quality: 0.7,
     });
-    
-    if (!result.canceled && result.assets[0] && receiverKey) {
+    if (!result.canceled && result.assets[0] && receiverPublicKey.current && myKeys.current) {
       const asset = result.assets[0];
       const fileName = asset.uri.split('/').pop();
-      
-      const pendingMsg = {
-        _id: Math.random().toString(),
-        createdAt: new Date(),
-        user: { _id: currentUserId },
-        image: asset.uri,
-        pending: true,
+      const pending = {
+        _id: `img-${Date.now()}`, createdAt: new Date(),
+        user: { _id: currentUserId.current }, image: asset.uri, pending: true,
       };
-      setMessages(prev => GiftedChat.append(prev, [pendingMsg]));
-
-      try {
-        const uploadRes = await api.uploadFile(asset.uri, fileName, 'image/jpeg');
-        if (uploadRes.success) {
-          const aesKey = await generateAesKey();
-          const iv = await generateIv();
-          
-          const encContent = await encryptMessage('Image', aesKey, iv);
-          const encAesKey = await encryptAesKey(aesKey, receiverKey);
-          
-          sendChatMessage(receiverId, encContent, encAesKey, iv, 'IMAGE', {
-            fileName: uploadRes.data.fileName,
-            fileUrl: uploadRes.data.fileUrl,
-            fileSize: uploadRes.data.fileSize,
-          });
-        }
-      } catch (e) {
-        console.error('Image upload failed', e);
+      setMessages(prev => GiftedChat.append(prev, [pending]));
+      const uploadRes = await api.uploadFile(asset.uri, fileName, 'image/jpeg');
+      if (uploadRes.success) {
+        const aesKey = await generateAesKey();
+        const iv = await generateIv();
+        const encContent = await encryptMessage('Image', aesKey, iv);
+        const encAesKeyReceiver = await encryptAesKey(aesKey, receiverPublicKey.current);
+        const encAesKeySender = await encryptAesKey(aesKey, myKeys.current.publicKey);
+        sendChatMessage(receiverId, encContent, encAesKeyReceiver, encAesKeySender, iv, 'IMAGE', {
+          fileName: uploadRes.data.fileName,
+          fileUrl: uploadRes.data.fileUrl,
+          fileSize: uploadRes.data.fileSize,
+        });
       }
     }
-  };
+  }, [receiverId]);
 
-  // Asymmetrical Fluid Bubbles
-  const renderBubble = (props) => {
-    return (
-      <Bubble
-        {...props}
-        wrapperStyle={{
-          right: [
-            { backgroundColor: theme.colors.surfaceHigh },
-            ghostBorder,
-            { borderTopLeftRadius: theme.borderRadius.xl, borderBottomLeftRadius: theme.borderRadius.xl, borderTopRightRadius: theme.borderRadius.xl, borderBottomRightRadius: theme.borderRadius.sm }
-          ],
-          left: [
-            { backgroundColor: theme.colors.surfaceBase },
-            ghostBorder,
-            { borderTopLeftRadius: theme.borderRadius.xl, borderBottomLeftRadius: theme.borderRadius.sm, borderTopRightRadius: theme.borderRadius.xl, borderBottomRightRadius: theme.borderRadius.xl }
-          ],
-        }}
-        containerToNextStyle={{
-           right: { borderBottomRightRadius: theme.borderRadius.sm },
-           left: { borderBottomLeftRadius: theme.borderRadius.sm }
-        }}
-        textStyle={{
-          right: { color: theme.colors.text, fontSize: theme.fontSize.md, fontFamily: theme.typography.fontRegular, letterSpacing: 0.3 },
-          left: { color: theme.colors.text, fontSize: theme.fontSize.md, fontFamily: theme.typography.fontRegular, letterSpacing: 0.3 },
-        }}
-        timeTextStyle={{
-          right: { color: theme.colors.textVariant, fontFamily: theme.typography.fontLight, fontSize: 10 },
-          left: { color: theme.colors.textVariant, fontFamily: theme.typography.fontLight, fontSize: 10 },
-        }}
-      />
-    );
-  };
+  const renderBubble = useCallback((props) => (
+    <Bubble
+      {...props}
+      wrapperStyle={{
+        right: {
+          backgroundColor: theme.colors.bubbleSent,
+          borderRadius: 14,
+          borderBottomRightRadius: 4,
+          marginBottom: 2,
+          paddingHorizontal: 2,
+        },
+        left: {
+          backgroundColor: theme.colors.bubbleReceived,
+          borderRadius: 14,
+          borderBottomLeftRadius: 4,
+          marginBottom: 2,
+          paddingHorizontal: 2,
+          borderWidth: theme.isDark ? 0 : 0.5,
+          borderColor: theme.colors.bubbleBorder,
+        },
+      }}
+      textStyle={{
+        right: {
+          color: theme.colors.bubbleSentText,
+          fontFamily: theme.typography.fontRegular,
+          fontSize: theme.fontSize.md,
+          lineHeight: 21,
+        },
+        left: {
+          color: theme.colors.bubbleReceivedText,
+          fontFamily: theme.typography.fontRegular,
+          fontSize: theme.fontSize.md,
+          lineHeight: 21,
+        },
+      }}
+      timeTextStyle={{
+        right: { color: theme.colors.bubbleSentTime, fontSize: 11 },
+        left: { color: theme.colors.bubbleReceivedTime, fontSize: 11 },
+      }}
+      renderTicks={(msg) => {
+        if (msg.user._id !== currentUserId.current) return null;
+        return (
+          <View style={{ flexDirection: 'row', marginRight: 8, marginBottom: 4 }}>
+            <Ionicons
+              name={msg.received ? 'checkmark-done' : msg.sent ? 'checkmark' : 'time-outline'}
+              size={14}
+              color={theme.colors.bubbleSentTime}
+            />
+          </View>
+        );
+      }}
+    />
+  ), [theme, s]);
 
-  const renderSend = (props) => (
-    <Send {...props} containerStyle={{ justifyContent: 'center', marginRight: 16 }}>
-      <Ionicons name="paper-plane" size={24} color={theme.colors.primary} />
+  const renderSend = useCallback((props) => (
+    <Send {...props} containerStyle={s.sendContainer}>
+      <View style={s.sendBtn}>
+        <Ionicons name="send" size={18} color="#fff" />
+      </View>
     </Send>
-  );
+  ), [s]);
 
-  const renderInputToolbar = (props) => (
-    <View style={{ marginBottom: Math.max(insets.bottom, 12), paddingHorizontal: 16 }}>
-      <BlurView tint="dark" intensity={60} style={[s.inputToolbarBlur, ghostBorder]}>
-        <InputToolbar
-          {...props}
-          containerStyle={{
-            backgroundColor: 'transparent',
-            borderTopWidth: 0,
-            paddingVertical: 2,
-          }}
-          primaryStyle={{ alignItems: 'center' }}
-        />
-      </BlurView>
-    </View>
-  );
+  const renderInputToolbar = useCallback((props) => (
+    <InputToolbar
+      {...props}
+      containerStyle={s.inputToolbar}
+      primaryStyle={{ alignItems: 'center' }}
+    />
+  ), [s]);
 
-  const renderActions = () => (
+  const renderComposer = useCallback((props) => (
+    <Composer
+      {...props}
+      textInputStyle={s.textInput}
+      placeholderTextColor={theme.colors.textMuted}
+    />
+  ), [s, theme]);
+
+  const renderActions = useCallback(() => (
     <TouchableOpacity style={s.actionBtn} onPress={pickImage}>
-      <Ionicons name="add" size={26} color={theme.colors.secondary} />
+      <Ionicons name="attach" size={26} color={theme.colors.textMuted} />
     </TouchableOpacity>
-  );
+  ), [pickImage, theme, s]);
 
   return (
     <View style={s.container}>
-      {/* Header */}
-      <View style={[s.header, { paddingTop: insets.top || 40 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
+      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
+        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
+          <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
         </TouchableOpacity>
+        <Avatar name={receiverName} size={38} />
         <View style={s.headerInfo}>
-          <Text style={s.headerName}>{receiverName}</Text>
-          <View style={s.e2eeBadge}>
-            <Ionicons name="shield-checkmark" size={10} color={theme.colors.secondary} />
-            <Text style={s.e2eeText}>E2E ENCRYPTED CONNECTION</Text>
-          </View>
+          <Text style={s.headerName} numberOfLines={1}>{receiverName}</Text>
+          <Text style={s.headerStatus}>
+            {isTyping ? 'typing…' : online ? 'online' : 'last seen recently'}
+          </Text>
         </View>
-        <View style={s.headerActions}>
-          <TouchableOpacity style={s.iconBtn}>
-            <Ionicons name="scan-outline" size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={s.headerBtn} hitSlop={8}>
+          <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
+        </TouchableOpacity>
       </View>
 
-      {/* Chat Area */}
-      <View style={s.chatContainer}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.chatBg }}>
         <GiftedChat
           messages={messages}
-          onSend={m => onSend(m)}
-          user={{ _id: currentUserId || '' }}
+          onSend={onSend}
+          user={{ _id: currentUserId.current || '' }}
           onInputTextChanged={onInputTextChanged}
           renderBubble={renderBubble}
           renderSend={renderSend}
           renderInputToolbar={renderInputToolbar}
+          renderComposer={renderComposer}
           renderActions={renderActions}
           isTyping={isTyping}
-          placeholder="SECURE MESSAGE..."
-          textInputStyle={s.textInput}
+          loadEarlier={hasEarlier}
+          isLoadingEarlier={loadingEarlier}
+          onLoadEarlier={onLoadEarlier}
+          placeholder="Message"
           alwaysShowSend
           scrollToBottom
           renderAvatar={null}
-          bottomOffset={0}
+          maxComposerHeight={120}
+          minComposerHeight={40}
+          bottomOffset={insets.bottom}
+          messagesContainerStyle={{ backgroundColor: theme.colors.chatBg, paddingBottom: 4 }}
         />
       </View>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
+const makeStyles = (t) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingBottom: 16, paddingHorizontal: 12,
+    backgroundColor: t.colors.headerBg,
+    paddingBottom: 10, paddingHorizontal: 8,
+    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
   },
-  backBtn: { padding: 8 },
-  headerInfo: { flex: 1, marginLeft: 12 },
-  headerName: { 
-    fontSize: theme.fontSize.lg, 
-    fontFamily: theme.typography.fontSemiBold, 
-    color: theme.colors.primary, 
-    letterSpacing: 1, 
-    marginBottom: 2 
+  backBtn: { padding: 6, marginRight: 2 },
+  headerInfo: { flex: 1, marginLeft: 10 },
+  headerName: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.lg,
+    color: t.colors.text,
   },
-  e2eeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  e2eeText: { 
-    fontSize: 9, 
-    fontFamily: theme.typography.fontSemiBold, 
-    color: theme.colors.secondary, 
-    letterSpacing: 0.5 
+  headerStatus: {
+    fontSize: 12,
+    fontFamily: t.typography.fontRegular,
+    color: t.colors.textSecondary,
+    marginTop: 1,
   },
-  headerActions: { flexDirection: 'row', gap: 8, paddingRight: 8 },
-  iconBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: theme.colors.surfaceLow,
+  headerBtn: { padding: 8 },
+
+  inputToolbar: {
+    backgroundColor: t.colors.surface,
+    borderTopWidth: 0.5, borderTopColor: t.colors.headerBorder,
+    paddingTop: 4, paddingBottom: 4, paddingHorizontal: 4,
+    minHeight: 52,
+  },
+  sendContainer: {
+    justifyContent: 'center', alignItems: 'center',
+    paddingRight: 6, paddingBottom: 4,
+  },
+  sendBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: t.colors.primary,
     justifyContent: 'center', alignItems: 'center',
   },
-  chatContainer: { flex: 1 },
-  inputToolbarBlur: {
-    borderRadius: theme.borderRadius.xl,
-    overflow: 'hidden',
-  },
   textInput: {
-    color: theme.colors.primary,
-    fontFamily: theme.typography.fontRegular,
-    fontSize: theme.fontSize.sm,
-    letterSpacing: 1,
-    paddingTop: 10,
-    marginTop: 0,
-    marginBottom: 0,
-    marginLeft: 0,
+    color: t.colors.text,
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.md,
+    backgroundColor: t.colors.inputBg,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingTop: 10, paddingBottom: 10,
+    marginLeft: 4, marginRight: 4,
+    marginTop: 4, marginBottom: 4,
+    minHeight: 40,
   },
-  actionBtn: { padding: 8, paddingLeft: 16 },
+  actionBtn: {
+    padding: 8, justifyContent: 'center',
+  },
 });

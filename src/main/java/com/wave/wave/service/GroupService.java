@@ -5,6 +5,9 @@ import com.wave.wave.model.GroupMember;
 import com.wave.wave.repository.GroupMemberRepository;
 import com.wave.wave.repository.GroupRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +25,7 @@ public class GroupService {
     @Autowired
     private GroupMemberRepository memberRepo;
 
+    @CacheEvict(value = "user-groups", allEntries = true)
     public ChatGroup createGroup(String groupName, String description, String creatorUserId, List<String> memberIds) {
         ChatGroup group = new ChatGroup();
         group.setGroupName(groupName);
@@ -29,7 +33,6 @@ public class GroupService {
         group.setCreatedBy(creatorUserId);
         group.setCreatedAt(LocalDateTime.now());
         group = groupRepo.save(group);
-
         String groupId = group.getGroupId().toString();
         memberRepo.save(new GroupMember(groupId, creatorUserId, GroupMember.Role.ADMIN));
         if (memberIds != null) {
@@ -39,7 +42,6 @@ public class GroupService {
                 }
             }
         }
-
         return group;
     }
 
@@ -47,6 +49,7 @@ public class GroupService {
         return groupRepo.findById(groupId);
     }
 
+    @Cacheable(value = "user-groups", key = "#userId")
     public List<ChatGroup> getUserGroups(String userId) {
         List<GroupMember> memberships = memberRepo.findByUserId(userId);
         return memberships.stream()
@@ -55,16 +58,25 @@ public class GroupService {
                 .toList();
     }
 
+    @Cacheable(value = "group-members", key = "#groupId")
     public List<GroupMember> getGroupMembers(String groupId) {
         return memberRepo.findByGroupId(groupId);
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "group-members", key = "#groupId"),
+            @CacheEvict(value = "user-groups", allEntries = true)
+    })
     public void addMember(String groupId, String userId) {
         if (!memberRepo.existsByGroupIdAndUserId(groupId, userId)) {
             memberRepo.save(new GroupMember(groupId, userId, GroupMember.Role.MEMBER));
         }
     }
 
+    @Caching(evict = {
+            @CacheEvict(value = "group-members", key = "#groupId"),
+            @CacheEvict(value = "user-groups", allEntries = true)
+    })
     @Transactional
     public void removeMember(String groupId, String userId) {
         memberRepo.deleteByGroupIdAndUserId(groupId, userId);

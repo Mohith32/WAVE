@@ -1,9 +1,8 @@
 package com.wave.wave.model;
 
+import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
-
-import jakarta.persistence.*;
 
 @Entity
 @Table(name = "messages")
@@ -16,7 +15,7 @@ public class Message {
     @Column(nullable = false)
     private String senderId;
 
-    @Column(nullable = false)
+    @Column
     private String receiverId;
 
     @Column(columnDefinition = "TEXT")
@@ -24,6 +23,9 @@ public class Message {
 
     @Column(columnDefinition = "TEXT")
     private String encryptedAesKey;
+
+    @Column(columnDefinition = "TEXT")
+    private String senderEncryptedAesKey;
 
     @Column
     private String iv;
@@ -68,6 +70,9 @@ public class Message {
 
     public String getEncryptedAesKey() { return encryptedAesKey; }
     public void setEncryptedAesKey(String encryptedAesKey) { this.encryptedAesKey = encryptedAesKey; }
+
+    public String getSenderEncryptedAesKey() { return senderEncryptedAesKey; }
+    public void setSenderEncryptedAesKey(String senderEncryptedAesKey) { this.senderEncryptedAesKey = senderEncryptedAesKey; }
 
     public String getIv() { return iv; }
     public void setIv(String iv) { this.iv = iv; }

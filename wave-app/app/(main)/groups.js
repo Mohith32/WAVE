@@ -1,164 +1,133 @@
-import { useState, useCallback, useEffect } from 'react';
-import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl
-} from 'react-native';
+import React, { memo, useCallback, useMemo } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../../utils/api';
-import { theme } from '../../utils/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useGroups } from '../../hooks/useGroups';
+import EmptyState from '../../components/EmptyState';
+import { useTheme } from '../../utils/theme';
+import { getAvatarColor } from '../../components/Avatar';
 
-export default function GroupsScreen() {
-  const router = useRouter();
-  const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+const ITEM_HEIGHT = 72;
 
-  const loadGroups = useCallback(async () => {
-    try {
-      const res = await api.getMyGroups();
-      if (res.success) {
-        setGroups(res.data || []);
-      }
-    } catch (e) {
-      console.error('Failed to load groups', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadGroups();
-  }, [loadGroups]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadGroups();
-  };
-
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={s.groupItem}
-      activeOpacity={0.7}
-      onPress={() => router.push(`/(main)/group-chat/${item.groupId}?name=${encodeURIComponent(item.groupName)}`)}
-    >
-      <View style={s.avatar}>
-        <Ionicons name="people" size={24} color={theme.colors.background} />
+const GroupItem = memo(({ item, onPress, theme, s }) => {
+  const bg = getAvatarColor(item.groupName);
+  return (
+    <TouchableOpacity style={s.item} activeOpacity={0.6} onPress={() => onPress(item)}>
+      <View style={[s.avatar, { backgroundColor: bg }]}>
+        <Ionicons name="people" size={26} color="#fff" />
       </View>
-
-      <View style={s.groupInfo}>
-        <Text style={s.groupName}>{item.groupName}</Text>
-        <Text style={s.description} numberOfLines={1}>
-          {item.description || "Secure group channel"}
+      <View style={s.info}>
+        <Text style={s.name} numberOfLines={1}>{item.groupName}</Text>
+        <Text style={s.sub} numberOfLines={1}>
+          {item.description || 'Group chat'}
         </Text>
-      </View>
-
-      <View style={s.groupMeta}>
-        <Text style={s.metaText}>MULTI-NODE</Text>
       </View>
     </TouchableOpacity>
   );
+});
+
+export default function GroupsScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const s = useMemo(() => makeStyles(theme), [theme]);
+  const { groups, loading, refreshing, error, load } = useGroups();
+
+  const handlePress = useCallback((group) => {
+    router.push(`/(main)/group-chat/${group.groupId}?name=${encodeURIComponent(group.groupName)}`);
+  }, [router]);
 
   return (
     <View style={s.container}>
-      <View style={s.header}>
-        <Text style={s.title}>CHANNELS</Text>
-        <TouchableOpacity
-          style={s.headerBtn}
-          onPress={() => router.push('/(main)/create-group')}
-        >
-          <Ionicons name="add" size={24} color={theme.colors.background} />
-        </TouchableOpacity>
+      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
+        <Text style={s.title}>Groups</Text>
       </View>
 
-      {loading ? (
-        <View style={s.loader}>
-          <ActivityIndicator size="large" color={theme.colors.secondary} />
-        </View>
+      {error ? (
+        <EmptyState icon="cloud-offline-outline" title="Network error" subtitle={error} />
       ) : (
         <FlatList
           data={groups}
-          keyExtractor={(item) => item.groupId}
-          renderItem={renderItem}
-          contentContainerStyle={s.listContent}
+          keyExtractor={item => item.groupId}
+          renderItem={({ item }) => <GroupItem item={item} onPress={handlePress} theme={theme} s={s} />}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={theme.colors.secondary}
+              onRefresh={() => load(true)}
+              tintColor={theme.colors.primary}
             />
           }
+          contentContainerStyle={groups.length === 0 ? s.emptyContent : null}
+          ItemSeparatorComponent={() => <View style={s.separator} />}
+          getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
           ListEmptyComponent={
-            <View style={s.empty}>
-              <Ionicons name="people-outline" size={48} color={theme.colors.textDisabled} />
-              <Text style={s.emptyText}>NO ACTIVE CHANNELS FOUND.</Text>
-            </View>
+            !loading && (
+              <EmptyState
+                icon="people-circle-outline"
+                title="No groups yet"
+                subtitle="Create a group to chat with friends"
+              />
+            )
           }
         />
       )}
+
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => router.push('/(main)/create-group')}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={32} color="#FFFFFF" />
+      </TouchableOpacity>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
+const makeStyles = (t) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.colors.background },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 24, paddingTop: 64, paddingBottom: 16,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 16, paddingBottom: 10,
+    backgroundColor: t.colors.headerBg,
+    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
   },
-  title: { 
-    fontFamily: theme.typography.fontSemiBold, 
-    fontSize: theme.fontSize.xxl, 
-    color: theme.colors.primary, 
-    letterSpacing: 4 
+  title: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.xxl,
+    color: t.colors.text,
   },
-  headerBtn: { 
-    padding: 10, 
-    backgroundColor: theme.colors.primary, 
-    borderRadius: theme.borderRadius.full 
-  },
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  listContent: { paddingHorizontal: 16, paddingBottom: 100 }, // Under tab bar
-  groupItem: {
+  emptyContent: { flex: 1 },
+  item: {
+    height: ITEM_HEIGHT,
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 16, paddingHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: 'transparent',
-    borderRadius: theme.borderRadius.xl,
+    paddingHorizontal: 16,
+    backgroundColor: t.colors.surface,
   },
   avatar: {
-    width: 56, height: 56, borderRadius: theme.borderRadius.xl,
-    backgroundColor: theme.colors.secondary,
-    justifyContent: 'center', alignItems: 'center', marginRight: 16,
+    width: 54, height: 54, borderRadius: 27,
+    justifyContent: 'center', alignItems: 'center',
   },
-  groupInfo: { flex: 1, justifyContent: 'center' },
-  groupName: { 
-    fontFamily: theme.typography.fontSemiBold, 
-    fontSize: theme.fontSize.lg, 
-    color: theme.colors.primary, 
-    letterSpacing: 0.5, 
-    marginBottom: 4 
+  info: { flex: 1, marginLeft: 14, justifyContent: 'center' },
+  name: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: t.fontSize.md,
+    color: t.colors.text, marginBottom: 3,
   },
-  description: { 
-    fontFamily: theme.typography.fontLight, 
-    fontSize: theme.fontSize.sm, 
-    color: theme.colors.textVariant 
+  sub: {
+    fontFamily: t.typography.fontRegular,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textMuted,
   },
-  groupMeta: { alignItems: 'flex-end', justifyContent: 'center' },
-  metaText: {
-    fontFamily: theme.typography.fontSemiBold,
-    fontSize: 10,
-    color: theme.colors.outlineVariant,
-    letterSpacing: 1,
+  separator: {
+    height: 0.5, marginLeft: 84,
+    backgroundColor: t.colors.borderLight,
   },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  emptyText: { 
-    color: theme.colors.textDisabled, 
-    fontSize: theme.fontSize.xs, 
-    fontFamily: theme.typography.fontSemiBold, 
-    marginTop: 16, 
-    letterSpacing: 1 
+  fab: {
+    position: 'absolute',
+    right: 18, bottom: 20,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: t.colors.primary,
+    justifyContent: 'center', alignItems: 'center',
+    ...t.shadow.lg,
   },
 });
