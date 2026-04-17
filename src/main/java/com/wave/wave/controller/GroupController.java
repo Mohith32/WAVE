@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,14 +45,22 @@ public class GroupController {
 
     @GetMapping("/my-groups")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getMyGroups() {
-        String userId = SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getPrincipal() == null) {
+            return ResponseEntity.status(401).body(ApiResponse.error("Unauthorized"));
+        }
+        String userId = auth.getPrincipal().toString();
+        // Plain HashMap — Map.of() throws NPE on null values and crashes the request
         List<Map<String, Object>> groups = groupService.getUserGroups(userId).stream()
-                .map(g -> Map.<String, Object>of(
-                        "groupId", g.getGroupId().toString(),
-                        "groupName", g.getGroupName(),
-                        "description", g.getDescription() != null ? g.getDescription() : "",
-                        "createdBy", g.getCreatedBy()
-                ))
+                .filter(g -> g != null && g.getGroupId() != null)
+                .map(g -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("groupId",   g.getGroupId().toString());
+                    m.put("groupName", g.getGroupName() != null ? g.getGroupName() : "Clan");
+                    m.put("description", g.getDescription() != null ? g.getDescription() : "");
+                    m.put("createdBy", g.getCreatedBy() != null ? g.getCreatedBy() : "");
+                    return m;
+                })
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok("Groups fetched", groups));
     }

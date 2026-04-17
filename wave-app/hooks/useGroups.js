@@ -15,10 +15,12 @@ export function useGroups() {
       if (res.success) {
         setGroups(res.data || []);
       } else {
+        // Show the real server message instead of a generic fallback so
+        // we can debug quickly ("Request timed out" vs "Unauthorized" etc.)
         setError(res.message || 'Failed to load groups');
       }
     } catch (e) {
-      setError('Network error');
+      setError(e?.message || 'Network error');
     } finally {
       setLoading(false);
       setRefreshing(false);
