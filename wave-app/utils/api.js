@@ -117,6 +117,11 @@ export const api = {
     { headers: jsonHeaders() }
   ),
 
+  clearConversation: (userId) => request(
+    `${API_BASE}/api/messages/conversation/${userId}`,
+    { method: 'DELETE', headers: jsonHeaders() }
+  ),
+
   createGroup: (groupName, description, memberIds) => request(`${API_BASE}/api/groups/create`, {
     method: 'POST',
     headers: jsonHeaders(),

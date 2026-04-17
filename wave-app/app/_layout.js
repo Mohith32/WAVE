@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from '../utils/theme';
 import { onNotificationTap, presentLocalNotification } from '../utils/notifications';
 import { addMessageHandler } from '../utils/websocket';
 import { api } from '../utils/api';
+import { storage } from '../utils/storage';
 
 function Shell() {
   const theme = useTheme();
@@ -33,6 +34,8 @@ function Shell() {
     const remove = addMessageHandler(async (msg) => {
       if (msg.type === 'message' && msg.data) {
         const senderId = msg.data.senderId;
+        // Respect per-peer mute preference
+        if (await storage.isMuted(senderId)) return;
         let name = cache.get(senderId);
         if (!name) {
           try {

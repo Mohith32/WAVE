@@ -9,7 +9,6 @@ import { connectWebSocket } from '../utils/websocket';
 import { registerForPushNotifications } from '../utils/notifications';
 import { useTheme } from '../utils/theme';
 
-// Splash screen stays visible until this route renders + we navigate away.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function Index() {
@@ -28,8 +27,7 @@ export default function Index() {
         } else {
           router.replace('/(auth)/login');
         }
-      } catch (e) {
-        console.warn('Session check failed', e);
+      } catch {
         router.replace('/(auth)/login');
       } finally {
         SplashScreen.hideAsync().catch(() => {});
@@ -39,20 +37,20 @@ export default function Index() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.logoBox, { backgroundColor: theme.colors.primary }]}>
-        <Ionicons name="paper-plane" size={44} color="#FFFFFF" />
+      <View style={[styles.logo, { backgroundColor: theme.colors.primary }]}>
+        <Ionicons name="paper-plane" size={38} color="#fff" />
       </View>
       <Text style={[styles.text, { color: theme.colors.text }]}>Wave</Text>
-      <ActivityIndicator color={theme.colors.primary} size="small" style={{ marginTop: 24 }} />
+      <ActivityIndicator color={theme.colors.primary} size="small" style={{ marginTop: 20 }} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  logoBox: {
-    width: 96, height: 96, borderRadius: 48,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 20,
+  logo: {
+    width: 72, height: 72, borderRadius: 18,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 18,
   },
-  text: { fontSize: 28, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 },
+  text: { fontSize: 28, fontFamily: 'Inter_600SemiBold', letterSpacing: -0.5 },
 });

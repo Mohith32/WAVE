@@ -48,6 +48,11 @@ public class MessageService {
         return messageRepo.findByGroupId(groupId);
     }
 
+    @org.springframework.transaction.annotation.Transactional
+    public int clearConversation(String userId1, String userId2) {
+        return messageRepo.deleteConversation(userId1, userId2);
+    }
+
     public Page<Message> getGroupMessagesPaged(String groupId, int page, int size) {
         return messageRepo.findByGroupIdPaged(groupId,
                 PageRequest.of(page, size, Sort.by("timestamp").descending()));

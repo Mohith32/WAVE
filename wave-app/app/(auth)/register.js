@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
+  View, Text, TextInput, StyleSheet,
+  KeyboardAvoidingView, Platform, ScrollView, Alert, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import GradientButton from '../../components/GradientButton';
 import { api } from '../../utils/api';
 import { generateKeyPair } from '../../utils/crypto';
 import { useTheme } from '../../utils/theme';
@@ -23,34 +24,22 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!displayName.trim() || !username.trim() || !email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Please fill in all fields.');
+      Alert.alert('Missing fields', 'Fill in all fields.');
       return;
     }
-    if (username.length < 3) {
-      Alert.alert('Username too short', 'Use at least 3 characters.');
-      return;
-    }
-    if (!/^[a-zA-Z0-9_.]+$/.test(username)) {
-      Alert.alert('Invalid username', 'Only letters, numbers, _ and . allowed.');
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert('Weak password', 'Password must be at least 6 characters.');
-      return;
-    }
+    if (username.length < 3) return Alert.alert('Username too short', 'At least 3 characters.');
+    if (!/^[a-zA-Z0-9_.]+$/.test(username)) return Alert.alert('Invalid username', 'Letters, numbers, _ and . only.');
+    if (password.length < 6) return Alert.alert('Weak password', 'At least 6 characters.');
 
     setLoading(true);
     try {
-      // Generate keys now so they're ready when we register after OTP verify
       const keyPair = await generateKeyPair();
       const cleanEmail = email.trim().toLowerCase();
-
       const otpRes = await api.requestOtp(cleanEmail);
       if (!otpRes.success) {
         Alert.alert('Could not send code', otpRes.message || 'Try again.');
         return;
       }
-
       router.push({
         pathname: '/(auth)/verify-otp',
         params: {
@@ -62,7 +51,7 @@ export default function RegisterScreen() {
           privateKey: keyPair.privateKey,
         },
       });
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Could not connect to server.');
     } finally {
       setLoading(false);
@@ -72,94 +61,81 @@ export default function RegisterScreen() {
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={({ pressed }) => [s.back, { opacity: pressed ? 0.5 : 1 }]}>
+          <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
+          <Text style={s.backText}>Back</Text>
+        </Pressable>
 
-        <View style={s.header}>
-          <View style={s.logoBox}>
-            <Ionicons name="person-add" size={44} color="#FFFFFF" />
-          </View>
-          <Text style={s.title}>Create an account</Text>
-          <Text style={s.tagline}>Join Wave and start messaging</Text>
+        <View style={s.hero}>
+          <Text style={s.title}>Create account</Text>
+          <Text style={s.tagline}>Claim your handle on Wave</Text>
         </View>
 
         <View style={s.form}>
-          <Text style={s.label}>Display Name</Text>
-          <View style={s.inputWrap}>
+          <View style={s.inputRow}>
             <TextInput
               style={s.input}
-              placeholder="Your name"
+              placeholder="Name"
               placeholderTextColor={theme.colors.placeholder}
-              value={displayName}
-              onChangeText={setDisplayName}
+              value={displayName} onChangeText={setDisplayName}
             />
           </View>
-
-          <Text style={[s.label, { marginTop: 18 }]}>Username</Text>
-          <View style={s.inputWrap}>
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.lg, marginRight: 4 }}>@</Text>
+          <View style={s.divider} />
+          <View style={s.inputRow}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: 17, marginRight: 2 }}>@</Text>
             <TextInput
               style={s.input}
-              placeholder="your_handle"
+              placeholder="username"
               placeholderTextColor={theme.colors.placeholder}
               value={username}
               onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={20}
+              autoCapitalize="none" autoCorrect={false} maxLength={20}
             />
           </View>
-
-          <Text style={[s.label, { marginTop: 18 }]}>Email</Text>
-          <View style={s.inputWrap}>
+          <View style={s.divider} />
+          <View style={s.inputRow}>
             <TextInput
               style={s.input}
-              placeholder="you@example.com"
+              placeholder="Email"
               placeholderTextColor={theme.colors.placeholder}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+              value={email} onChangeText={setEmail}
+              autoCapitalize="none" keyboardType="email-address"
             />
           </View>
-
-          <Text style={[s.label, { marginTop: 18 }]}>Password</Text>
-          <View style={s.inputWrap}>
+          <View style={s.divider} />
+          <View style={s.inputRow}>
             <TextInput
               style={[s.input, { flex: 1 }]}
-              placeholder="Min. 6 characters"
+              placeholder="Password (min. 6)"
               placeholderTextColor={theme.colors.placeholder}
-              value={password}
-              onChangeText={setPassword}
+              value={password} onChangeText={setPassword}
               secureTextEntry={!showPassword}
             />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
-              <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={theme.colors.textMuted}
-              />
-            </TouchableOpacity>
+            <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.colors.textMuted} />
+            </Pressable>
           </View>
-
-          <TouchableOpacity
-            style={[s.btn, loading && s.btnDisabled]}
-            onPress={handleRegister}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={s.btnText}>SEND VERIFICATION CODE</Text>
-            )}
-          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={s.link} onPress={() => router.back()}>
-          <Text style={s.linkText}>Already have an account? <Text style={s.linkBold}>Sign in</Text></Text>
-        </TouchableOpacity>
+        <GradientButton
+          title="Continue"
+          loading={loading}
+          onPress={handleRegister}
+          size="lg"
+          style={{ marginTop: 20 }}
+        />
+
+        <Text style={s.footnote}>
+          We'll send a verification code to your email.
+        </Text>
+
+        <Pressable onPress={() => router.back()} style={s.linkWrap}>
+          {({ pressed }) => (
+            <Text style={[s.link, { opacity: pressed ? 0.5 : 1 }]}>
+              Already have an account?  <Text style={s.linkBold}>Sign in</Text>
+            </Text>
+          )}
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -169,68 +145,29 @@ const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
   scroll: { flexGrow: 1, padding: 24, paddingTop: 60 },
 
-  backBtn: { padding: 4, marginBottom: 16 },
+  back: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  backText: { color: t.colors.primary, fontSize: 17, fontFamily: t.typography.fontRegular, marginLeft: -4 },
 
-  header: { alignItems: 'center', marginBottom: 28 },
-  logoBox: {
-    width: 96, height: 96, borderRadius: 48,
-    backgroundColor: t.colors.primary,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 18,
-  },
-  title: {
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: 24, color: t.colors.text, textAlign: 'center',
-  },
-  tagline: {
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.md, color: t.colors.textSecondary,
-    marginTop: 6, textAlign: 'center',
-  },
+  hero: { marginBottom: 24 },
+  title: { fontFamily: t.typography.fontSemiBold, fontSize: 28, color: t.colors.text, letterSpacing: -0.5 },
+  tagline: { fontFamily: t.typography.fontRegular, fontSize: 15, color: t.colors.textMuted, marginTop: 4 },
 
-  form: { paddingHorizontal: 4 },
-  label: {
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.sm,
-    color: t.colors.primary,
-    marginBottom: 4,
+  form: {
+    backgroundColor: t.colors.surface,
+    borderRadius: 12, overflow: 'hidden',
   },
-  inputWrap: {
+  inputRow: {
     flexDirection: 'row', alignItems: 'center',
-    borderBottomWidth: 1.5,
-    borderBottomColor: t.colors.primary,
-    paddingBottom: 6,
+    paddingHorizontal: 14, paddingVertical: 12, gap: 8,
   },
-  input: {
-    flex: 1,
-    color: t.colors.text,
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.lg,
-    paddingVertical: 4,
-  },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14, backgroundColor: t.colors.hairline },
+  input: { flex: 1, color: t.colors.text, fontFamily: t.typography.fontRegular, fontSize: 17, padding: 0 },
 
-  btn: {
-    height: 52, borderRadius: t.borderRadius.md,
-    backgroundColor: t.colors.primary,
-    justifyContent: 'center', alignItems: 'center',
-    marginTop: 28,
+  footnote: {
+    fontFamily: t.typography.fontRegular, fontSize: 13,
+    color: t.colors.textMuted, marginTop: 10, marginHorizontal: 4, textAlign: 'center',
   },
-  btnDisabled: { opacity: 0.6 },
-  btnText: {
-    color: '#fff',
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.md,
-    letterSpacing: 1,
-  },
-
-  link: { alignItems: 'center', marginTop: 24 },
-  linkText: {
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.sm,
-    color: t.colors.textSecondary,
-  },
-  linkBold: {
-    fontFamily: t.typography.fontSemiBold,
-    color: t.colors.primary,
-  },
+  linkWrap: { alignItems: 'center', marginTop: 22, padding: 8 },
+  link: { fontFamily: t.typography.fontRegular, fontSize: 15, color: t.colors.textMuted },
+  linkBold: { fontFamily: t.typography.fontSemiBold, color: t.colors.primary },
 });

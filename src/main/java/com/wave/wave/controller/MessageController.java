@@ -67,4 +67,19 @@ public class MessageController {
         List<Map<String, Object>> convos = messageService.getRecentConversations(myId);
         return ResponseEntity.ok(ApiResponse.ok("Conversations fetched", convos));
     }
+
+    /**
+     * Delete every 1:1 message between the authenticated user and :userId.
+     * Both sides lose the history — by design, this is a mutual clear.
+     */
+    @DeleteMapping("/conversation/{userId}")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> clearConversation(@PathVariable String userId) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return ResponseEntity.status(401).body(ApiResponse.error("Unauthorized"));
+        }
+        String myId = auth.getPrincipal().toString();
+        int deleted = messageService.clearConversation(myId, userId);
+        return ResponseEntity.ok(ApiResponse.ok("Conversation cleared", Map.of("deleted", deleted)));
+    }
 }

@@ -1,10 +1,8 @@
 import { useMemo } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BlurHeader from '../../components/BlurHeader';
 import { useTheme } from '../../utils/theme';
 import { storage } from '../../utils/storage';
 import { setAuthToken } from '../../utils/api';
@@ -12,19 +10,17 @@ import { disconnectWebSocket } from '../../utils/websocket';
 
 export default function PrivacyScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const theme = useTheme();
   const s = useMemo(() => makeStyles(theme), [theme]);
 
-  const handleDeleteAccount = () => {
+  const handleDelete = () => {
     Alert.alert(
       'Delete account?',
-      'This will sign you out and clear all local data. Server-side deletion is not yet implemented — contact support to fully remove your account.',
+      'This signs you out and clears all local data.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign out + clear',
-          style: 'destructive',
+          text: 'Sign Out & Clear', style: 'destructive',
           onPress: async () => {
             disconnectWebSocket();
             setAuthToken(null);
@@ -37,77 +33,51 @@ export default function PrivacyScreen() {
     );
   };
 
-  const items = [
-    {
-      icon: 'shield-checkmark',
-      color: theme.colors.success,
-      title: 'End-to-end encryption',
-      sub: 'Messages are encrypted on-device. Active by default.',
-    },
-    {
-      icon: 'lock-closed',
-      color: theme.colors.primary,
-      title: 'Secure storage',
-      sub: 'Tokens and keys stored in OS keychain.',
-    },
-    {
-      icon: 'eye-off',
-      color: '#8B5CF6',
-      title: 'No analytics',
-      sub: 'Wave does not track your activity.',
-    },
-  ];
-
   return (
     <View style={s.container}>
-      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Privacy & Security</Text>
-        <View style={{ width: 28 }} />
-      </View>
+      <BlurHeader title="Privacy & Security" onBack={() => router.back()} />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        <Text style={s.sectionLabel}>HOW WE PROTECT YOU</Text>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
+        <Text style={s.sectionLabel}>PROTECTION</Text>
         <View style={s.section}>
-          {items.map((it, idx) => (
-            <View key={it.title}>
-              <View style={s.row}>
-                <View style={[s.rowIconBox, { backgroundColor: it.color + '22' }]}>
-                  <Ionicons name={it.icon} size={20} color={it.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowLabel}>{it.title}</Text>
-                  <Text style={s.rowSub}>{it.sub}</Text>
-                </View>
-              </View>
-              {idx < items.length - 1 && <View style={s.divider} />}
+          <View style={s.row}>
+            <View style={s.rowContent}>
+              <Text style={s.rowLabel}>End-to-End Encryption</Text>
+              <Text style={s.rowSub}>Active · messages encrypted on-device</Text>
             </View>
-          ))}
+            <Ionicons name="checkmark-circle" size={22} color={theme.colors.success} />
+          </View>
+          <View style={s.divider} />
+          <View style={s.row}>
+            <View style={s.rowContent}>
+              <Text style={s.rowLabel}>Secure Storage</Text>
+              <Text style={s.rowSub}>Keys stored in OS keychain</Text>
+            </View>
+            <Ionicons name="checkmark-circle" size={22} color={theme.colors.success} />
+          </View>
+          <View style={s.divider} />
+          <View style={s.row}>
+            <View style={s.rowContent}>
+              <Text style={s.rowLabel}>No Analytics</Text>
+              <Text style={s.rowSub}>We don't track your activity</Text>
+            </View>
+            <Ionicons name="checkmark-circle" size={22} color={theme.colors.success} />
+          </View>
         </View>
 
-        <Text style={s.sectionLabel}>ACTIONS</Text>
+        <Text style={s.sectionLabel}>MANAGE</Text>
         <View style={s.section}>
-          <TouchableOpacity style={s.row} onPress={() => router.push('/(main)/settings-keys')}>
-            <View style={[s.rowIconBox, { backgroundColor: theme.colors.primary + '22' }]}>
-              <Ionicons name="key" size={20} color={theme.colors.primary} />
-            </View>
-            <Text style={[s.rowLabel, { flex: 1 }]}>Manage encryption keys</Text>
-            <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
-          </TouchableOpacity>
-
+          <Pressable
+            onPress={() => router.push('/(main)/settings-keys')}
+            style={({ pressed }) => [s.row, pressed && s.pressed]}
+          >
+            <Text style={[s.rowLabel, { flex: 1 }]}>Encryption keys</Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.textGhost} />
+          </Pressable>
           <View style={s.divider} />
-
-          <TouchableOpacity style={s.row} onPress={handleDeleteAccount}>
-            <View style={[s.rowIconBox, { backgroundColor: theme.colors.error + '22' }]}>
-              <Ionicons name="trash" size={20} color={theme.colors.error} />
-            </View>
-            <Text style={[s.rowLabel, { flex: 1, color: theme.colors.error }]}>
-              Delete account + keys
-            </Text>
-            <Ionicons name="chevron-forward" size={18} color={theme.colors.error} />
-          </TouchableOpacity>
+          <Pressable onPress={handleDelete} style={({ pressed }) => [s.row, pressed && s.pressed]}>
+            <Text style={[s.rowLabel, { color: theme.colors.error }]}>Delete account</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </View>
@@ -116,33 +86,16 @@ export default function PrivacyScreen() {
 
 const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 12, paddingBottom: 12,
-    backgroundColor: t.colors.headerBg,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
-  },
-  headerTitle: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.lg, color: t.colors.text },
-
   sectionLabel: {
-    fontFamily: t.typography.fontMedium, fontSize: t.fontSize.xs,
-    color: t.colors.textMuted, marginTop: 20, marginBottom: 6,
-    marginHorizontal: 20, letterSpacing: 0.5,
+    fontFamily: t.typography.fontRegular, fontSize: 13, letterSpacing: 0.3,
+    color: t.colors.textMuted, marginTop: 16, marginBottom: 6, marginLeft: 12,
+    textTransform: 'uppercase',
   },
-  section: {
-    backgroundColor: t.colors.surface,
-    borderTopWidth: 0.5, borderBottomWidth: 0.5,
-    borderColor: t.colors.headerBorder,
-  },
-  row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12,
-  },
-  rowIconBox: {
-    width: 34, height: 34, borderRadius: 9,
-    justifyContent: 'center', alignItems: 'center', marginRight: 14,
-  },
-  rowLabel: { fontFamily: t.typography.fontRegular, fontSize: t.fontSize.md, color: t.colors.text },
-  rowSub: { fontFamily: t.typography.fontRegular, fontSize: 12, color: t.colors.textMuted, marginTop: 2 },
-  divider: { height: 0.5, marginLeft: 64, backgroundColor: t.colors.borderLight },
+  section: { backgroundColor: t.colors.surface, borderRadius: 12, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, minHeight: 44 },
+  rowContent: { flex: 1 },
+  pressed: { backgroundColor: t.colors.surfaceMuted },
+  rowLabel: { fontFamily: t.typography.fontRegular, fontSize: 17, color: t.colors.text },
+  rowSub: { fontFamily: t.typography.fontRegular, fontSize: 13, color: t.colors.textMuted, marginTop: 2 },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14, backgroundColor: t.colors.hairline },
 });

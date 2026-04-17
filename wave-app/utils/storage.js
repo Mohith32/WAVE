@@ -69,4 +69,20 @@ export const storage = {
   setNotifPreferences: async (prefs) => {
     await SecureStore.setItemAsync(KEYS.NOTIF_PREF, JSON.stringify(prefs));
   },
+
+  // Per-conversation mute (by peer userId). Local only.
+  isMuted: async (peerId) => {
+    const raw = await SecureStore.getItemAsync('wave_muted_peers');
+    if (!raw) return false;
+    try { return JSON.parse(raw).includes(peerId); } catch { return false; }
+  },
+  toggleMute: async (peerId) => {
+    const raw = await SecureStore.getItemAsync('wave_muted_peers');
+    let list = [];
+    try { list = raw ? JSON.parse(raw) : []; } catch {}
+    if (list.includes(peerId)) list = list.filter(x => x !== peerId);
+    else list.push(peerId);
+    await SecureStore.setItemAsync('wave_muted_peers', JSON.stringify(list));
+    return list.includes(peerId);
+  },
 };

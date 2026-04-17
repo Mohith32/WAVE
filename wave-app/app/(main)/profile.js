@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, useColorScheme,
+  View, Text, StyleSheet, Alert, ScrollView, useColorScheme, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,7 +11,7 @@ import { disconnectWebSocket } from '../../utils/websocket';
 import { useTheme } from '../../utils/theme';
 import { getAvatarColor } from '../../components/Avatar';
 
-export default function ProfileScreen() {
+export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -20,18 +20,13 @@ export default function ProfileScreen() {
   const [user, setUser] = useState(null);
 
   useEffect(() => { loadProfile(); }, []);
+  const loadProfile = async () => setUser(await storage.getSession());
 
-  const loadProfile = async () => {
-    const session = await storage.getSession();
-    setUser(session);
-  };
-
-  const handleLogout = async () => {
-    Alert.alert('Log Out', 'Are you sure?', [
+  const handleLogout = () => {
+    Alert.alert('Log out?', "You'll need to sign in again.", [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Log Out',
-        style: 'destructive',
+        text: 'Log Out', style: 'destructive',
         onPress: async () => {
           disconnectWebSocket();
           setAuthToken(null);
@@ -46,133 +41,128 @@ export default function ProfileScreen() {
 
   const initial = user.displayName?.charAt(0).toUpperCase() || '?';
   const bg = getAvatarColor(user.displayName);
-
   const themeLabel = theme.preference === 'system'
-    ? (scheme === 'dark' ? 'System · Dark' : 'System · Light')
+    ? (scheme === 'dark' ? 'Automatic · Dark' : 'Automatic · Light')
     : theme.preference.charAt(0).toUpperCase() + theme.preference.slice(1);
 
   const rows = [
-    {
-      icon: 'key-outline', label: 'Encryption Keys', color: theme.colors.primary,
-      onPress: () => router.push('/(main)/settings-keys'),
-    },
-    {
-      icon: 'notifications-outline', label: 'Notifications', color: '#F59E0B',
-      onPress: () => router.push('/(main)/settings-notifications'),
-    },
-    {
-      icon: scheme === 'dark' ? 'moon' : 'sunny',
-      label: 'Theme', color: '#EC4899', value: themeLabel,
-      onPress: () => router.push('/(main)/settings-theme'),
-    },
-    {
-      icon: 'lock-closed-outline', label: 'Privacy & Security', color: theme.colors.success,
-      onPress: () => router.push('/(main)/settings-privacy'),
-    },
-    {
-      icon: 'information-circle-outline', label: 'About Wave', color: theme.colors.textSecondary,
-      onPress: () => router.push('/(main)/settings-about'),
-    },
+    { icon: 'key-outline', label: 'Encryption Keys', color: theme.colors.primary, onPress: () => router.push('/(main)/settings-keys') },
+    { icon: 'notifications-outline', label: 'Notifications', color: theme.colors.error, onPress: () => router.push('/(main)/settings-notifications') },
+    { icon: 'contrast-outline', label: 'Appearance', value: themeLabel, color: theme.colors.primary, onPress: () => router.push('/(main)/settings-theme') },
+    { icon: 'lock-closed-outline', label: 'Privacy & Security', color: theme.colors.success, onPress: () => router.push('/(main)/settings-privacy') },
+    { icon: 'information-circle-outline', label: 'About', color: theme.colors.textMuted, onPress: () => router.push('/(main)/settings-about') },
   ];
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 40 }}>
+    <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <Text style={s.headerTitle}>Settings</Text>
+        <Text style={s.title}>Settings</Text>
       </View>
 
-      <View style={s.profileCard}>
-        <View style={[s.avatar, { backgroundColor: bg }]}>
-          <Text style={s.avatarText}>{initial}</Text>
-        </View>
-        <Text style={s.name}>{user.displayName}</Text>
-        <Text style={s.email}>{user.email}</Text>
-      </View>
-
-      <View style={s.section}>
-        {rows.map((r, idx) => (
-          <View key={r.label}>
-            <TouchableOpacity style={s.row} activeOpacity={0.6} onPress={r.onPress}>
-              <View style={[s.rowIconBox, { backgroundColor: r.color + '22' }]}>
-                <Ionicons name={r.icon} size={20} color={r.color} />
-              </View>
-              <Text style={s.rowLabel}>{r.label}</Text>
-              {r.value ? <Text style={s.rowValue}>{r.value}</Text> : null}
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-            {idx < rows.length - 1 && <View style={s.divider} />}
+      <ScrollView contentContainerStyle={s.scroll}>
+        {/* Profile card */}
+        <Pressable style={({ pressed }) => [s.profileCard, pressed && s.pressed]}>
+          <View style={[s.avatar, { backgroundColor: bg }]}>
+            <Text style={s.avatarText}>{initial}</Text>
           </View>
-        ))}
-      </View>
+          <View style={{ flex: 1, marginLeft: 14 }}>
+            <Text style={s.profileName} numberOfLines={1}>{user.displayName}</Text>
+            <Text style={s.profileEmail} numberOfLines={1}>{user.email}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textGhost} />
+        </Pressable>
 
-      <TouchableOpacity style={s.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
-        <Ionicons name="log-out-outline" size={22} color={theme.colors.error} />
-        <Text style={s.logoutText}>Log Out</Text>
-      </TouchableOpacity>
+        {/* Settings rows */}
+        <View style={s.section}>
+          {rows.map((r, idx) => (
+            <View key={r.label}>
+              <Pressable
+                onPress={r.onPress}
+                style={({ pressed }) => [s.row, pressed && s.pressed]}
+              >
+                <View style={[s.iconBox, { backgroundColor: r.color + '22' }]}>
+                  <Ionicons name={r.icon} size={18} color={r.color} />
+                </View>
+                <Text style={s.rowLabel}>{r.label}</Text>
+                {r.value ? <Text style={s.rowValue}>{r.value}</Text> : null}
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.textGhost} style={{ marginLeft: 6 }} />
+              </Pressable>
+              {idx < rows.length - 1 && <View style={s.divider} />}
+            </View>
+          ))}
+        </View>
 
-      <Text style={s.version}>Wave · v1.0.0</Text>
-    </ScrollView>
+        {/* Logout */}
+        <View style={[s.section, { marginTop: 24 }]}>
+          <Pressable
+            onPress={handleLogout}
+            style={({ pressed }) => [s.row, s.rowCenter, pressed && s.pressed]}
+          >
+            <Text style={s.logoutText}>Log Out</Text>
+          </Pressable>
+        </View>
+
+        <Text style={s.footer}>Wave · End-to-end encrypted</Text>
+      </ScrollView>
+    </View>
   );
 }
 
 const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
+
   header: {
-    paddingHorizontal: 16, paddingBottom: 10,
-    backgroundColor: t.colors.headerBg,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
+    backgroundColor: t.colors.background,
+    paddingHorizontal: 20, paddingBottom: 10,
   },
-  headerTitle: {
+  title: {
     fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.xxl, color: t.colors.text,
+    fontSize: 34, color: t.colors.text, letterSpacing: -0.5,
   },
+
+  scroll: { padding: 16, paddingBottom: 40 },
 
   profileCard: {
-    alignItems: 'center',
-    paddingVertical: 32,
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: t.colors.surface,
+    borderRadius: 12, padding: 14,
+    marginBottom: 24,
   },
   avatar: {
-    width: 96, height: 96, borderRadius: 48,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 14,
+    width: 54, height: 54, borderRadius: 27,
+    justifyContent: 'center', alignItems: 'center',
   },
-  avatarText: { color: '#fff', fontSize: 40, fontFamily: t.typography.fontSemiBold },
-  name: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.xl, color: t.colors.text },
-  email: {
-    fontFamily: t.typography.fontRegular, fontSize: t.fontSize.sm,
-    color: t.colors.textMuted, marginTop: 4,
-  },
+  avatarText: { color: '#fff', fontSize: 22, fontFamily: t.typography.fontSemiBold },
+  profileName: { fontFamily: t.typography.fontSemiBold, fontSize: 20, color: t.colors.text, letterSpacing: -0.3 },
+  profileEmail: { fontFamily: t.typography.fontRegular, fontSize: 13, color: t.colors.textMuted, marginTop: 2 },
 
   section: {
-    marginTop: 16,
     backgroundColor: t.colors.surface,
-    borderTopWidth: 0.5, borderBottomWidth: 0.5,
-    borderColor: t.colors.headerBorder,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
+  pressed: { backgroundColor: t.colors.surfaceMuted },
   row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12,
-  },
-  rowIconBox: {
-    width: 34, height: 34, borderRadius: 9,
-    justifyContent: 'center', alignItems: 'center', marginRight: 14,
-  },
-  rowLabel: { flex: 1, fontFamily: t.typography.fontRegular, fontSize: t.fontSize.md, color: t.colors.text },
-  rowValue: { fontFamily: t.typography.fontRegular, fontSize: t.fontSize.sm, color: t.colors.textMuted, marginRight: 6 },
-  divider: { height: 0.5, marginLeft: 64, backgroundColor: t.colors.borderLight },
-
-  logoutBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    marginTop: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14, paddingVertical: 11,
     backgroundColor: t.colors.surface,
-    borderTopWidth: 0.5, borderBottomWidth: 0.5,
-    borderColor: t.colors.headerBorder,
   },
-  logoutText: { color: t.colors.error, fontSize: t.fontSize.md, fontFamily: t.typography.fontSemiBold },
+  rowCenter: { justifyContent: 'center' },
+  iconBox: {
+    width: 30, height: 30, borderRadius: 7,
+    justifyContent: 'center', alignItems: 'center', marginRight: 12,
+  },
+  rowLabel: { flex: 1, fontFamily: t.typography.fontRegular, fontSize: 17, color: t.colors.text },
+  rowValue: { fontFamily: t.typography.fontRegular, fontSize: 15, color: t.colors.textMuted },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 56, backgroundColor: t.colors.hairline,
+  },
 
-  version: {
-    marginTop: 28, textAlign: 'center',
+  logoutText: { color: t.colors.error, fontSize: 17, fontFamily: t.typography.fontRegular },
+
+  footer: {
+    marginTop: 24, textAlign: 'center',
     fontFamily: t.typography.fontRegular, fontSize: 12,
     color: t.colors.textMuted,
   },

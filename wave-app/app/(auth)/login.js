@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
+  View, Text, TextInput, StyleSheet,
+  KeyboardAvoidingView, Platform, ScrollView, Alert, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import GradientButton from '../../components/GradientButton';
 import { api, setAuthToken } from '../../utils/api';
 import { storage } from '../../utils/storage';
 import { connectWebSocket } from '../../utils/websocket';
@@ -24,7 +25,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Please enter your email and password.');
+      Alert.alert('Missing fields', 'Enter your email and password.');
       return;
     }
     setLoading(true);
@@ -41,13 +42,12 @@ export default function LoginScreen() {
         setAuthToken(token);
         await storage.saveSession({ token, userId, displayName, email: userEmail });
         connectWebSocket(token);
-        // Fire-and-forget — fails silently in Expo Go
         registerForPushNotifications();
         router.replace('/(main)/chats');
       } else {
         Alert.alert('Login failed', res.message || 'Invalid credentials.');
       }
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Could not connect to server.');
     } finally {
       setLoading(false);
@@ -57,64 +57,57 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <View style={s.header}>
-          <View style={s.logoBox}>
-            <Ionicons name="paper-plane" size={46} color="#FFFFFF" />
+        <View style={s.hero}>
+          <View style={s.logo}>
+            <Ionicons name="paper-plane" size={34} color="#fff" />
           </View>
-          <Text style={s.appName}>Wave</Text>
-          <Text style={s.tagline}>Please confirm your account</Text>
+          <Text style={s.title}>Welcome back</Text>
+          <Text style={s.tagline}>Sign in to continue</Text>
         </View>
 
         <View style={s.form}>
-          <Text style={s.label}>Email</Text>
-          <View style={s.inputWrap}>
+          <View style={s.inputRow}>
             <TextInput
               style={s.input}
-              placeholder="you@example.com"
+              placeholder="Email"
               placeholderTextColor={theme.colors.placeholder}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
+              value={email} onChangeText={setEmail}
+              autoCapitalize="none" keyboardType="email-address"
             />
           </View>
-
-          <Text style={[s.label, { marginTop: 18 }]}>Password</Text>
-          <View style={s.inputWrap}>
+          <View style={s.divider} />
+          <View style={s.inputRow}>
             <TextInput
               style={[s.input, { flex: 1 }]}
-              placeholder="Your password"
+              placeholder="Password"
               placeholderTextColor={theme.colors.placeholder}
-              value={password}
-              onChangeText={setPassword}
+              value={password} onChangeText={setPassword}
               secureTextEntry={!showPassword}
             />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
+            <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={8}>
               <Ionicons
                 name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={theme.colors.textMuted}
+                size={20} color={theme.colors.textMuted}
               />
-            </TouchableOpacity>
+            </Pressable>
           </View>
-
-          <TouchableOpacity
-            style={[s.btn, loading && s.btnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={s.btnText}>NEXT</Text>
-            )}
-          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={s.link} onPress={() => router.push('/(auth)/register')}>
-          <Text style={s.linkText}>Don't have an account? <Text style={s.linkBold}>Create one</Text></Text>
-        </TouchableOpacity>
+        <GradientButton
+          title="Sign in"
+          loading={loading}
+          onPress={handleLogin}
+          size="lg"
+          style={{ marginTop: 20 }}
+        />
+
+        <Pressable onPress={() => router.push('/(auth)/register')} style={s.linkWrap}>
+          {({ pressed }) => (
+            <Text style={[s.link, { opacity: pressed ? 0.5 : 1 }]}>
+              New here?  <Text style={s.linkBold}>Create account</Text>
+            </Text>
+          )}
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -124,66 +117,34 @@ const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
 
-  header: { alignItems: 'center', marginBottom: 36 },
-  logoBox: {
-    width: 110, height: 110, borderRadius: 55,
+  hero: { alignItems: 'center', marginBottom: 32 },
+  logo: {
+    width: 72, height: 72, borderRadius: 18,
     backgroundColor: t.colors.primary,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 16,
   },
-  appName: {
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: 30, color: t.colors.text, letterSpacing: 0.5,
-  },
+  title: { fontFamily: t.typography.fontSemiBold, fontSize: 28, color: t.colors.text, letterSpacing: -0.5 },
   tagline: {
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.md, color: t.colors.textSecondary,
-    marginTop: 8, textAlign: 'center',
+    fontFamily: t.typography.fontRegular, fontSize: 15,
+    color: t.colors.textMuted, marginTop: 6,
   },
 
-  form: { paddingHorizontal: 4 },
-  label: {
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.sm,
-    color: t.colors.primary,
-    marginBottom: 4,
+  form: {
+    backgroundColor: t.colors.surface,
+    borderRadius: 12, overflow: 'hidden',
   },
-  inputWrap: {
+  inputRow: {
     flexDirection: 'row', alignItems: 'center',
-    borderBottomWidth: 1.5,
-    borderBottomColor: t.colors.primary,
-    paddingBottom: 6,
+    paddingHorizontal: 14, paddingVertical: 12,
+    gap: 10,
   },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14, backgroundColor: t.colors.hairline },
   input: {
-    flex: 1,
-    color: t.colors.text,
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.lg,
-    paddingVertical: 4,
+    flex: 1, color: t.colors.text,
+    fontFamily: t.typography.fontRegular, fontSize: 17, padding: 0,
   },
 
-  btn: {
-    height: 52, borderRadius: t.borderRadius.md,
-    backgroundColor: t.colors.primary,
-    justifyContent: 'center', alignItems: 'center',
-    marginTop: 32,
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: {
-    color: '#fff',
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.md,
-    letterSpacing: 1,
-  },
-
-  link: { alignItems: 'center', marginTop: 28 },
-  linkText: {
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.sm,
-    color: t.colors.textSecondary,
-  },
-  linkBold: {
-    fontFamily: t.typography.fontSemiBold,
-    color: t.colors.primary,
-  },
+  linkWrap: { alignItems: 'center', marginTop: 22, padding: 8 },
+  link: { fontFamily: t.typography.fontRegular, fontSize: 15, color: t.colors.textMuted },
+  linkBold: { fontFamily: t.typography.fontSemiBold, color: t.colors.primary },
 });

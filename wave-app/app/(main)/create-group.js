@@ -1,17 +1,16 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, ActivityIndicator, Alert,
+  View, Text, TextInput, StyleSheet, FlatList, ActivityIndicator, Alert, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api } from '../../utils/api';
-import { useTheme } from '../../utils/theme';
 import Avatar from '../../components/Avatar';
 import EmptyState from '../../components/EmptyState';
+import { api } from '../../utils/api';
+import { useTheme } from '../../utils/theme';
 
-export default function CreateGroupScreen() {
+export default function CreateClanScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -20,108 +19,95 @@ export default function CreateGroupScreen() {
   const [groupName, setGroupName] = useState('');
   const [description, setDescription] = useState('');
   const [users, setUsers] = useState([]);
-  const [selectedUsers, setSelectedUsers] = useState(new Set());
+  const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => { loadUsers(); }, []);
-
   const loadUsers = async () => {
     try {
-      // Only friends (mates) are allowed as clan members
       const res = await api.getFriends();
-      if (res.success) {
-        setUsers(res.data || []);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+      if (res.success) setUsers(res.data || []);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   };
 
   const toggleUser = (userId) => {
-    const next = new Set(selectedUsers);
-    if (next.has(userId)) next.delete(userId);
-    else next.add(userId);
-    setSelectedUsers(next);
+    const next = new Set(selected);
+    next.has(userId) ? next.delete(userId) : next.add(userId);
+    setSelected(next);
   };
 
   const handleCreate = async () => {
-    if (!groupName.trim()) {
-      Alert.alert('Required', 'Please enter a group name.');
-      return;
-    }
+    if (!groupName.trim()) return;
     setCreating(true);
     try {
-      const res = await api.createGroup(groupName.trim(), description.trim(), Array.from(selectedUsers));
+      const res = await api.createGroup(groupName.trim(), description.trim(), Array.from(selected));
       if (res.success) {
         router.replace(`/(main)/group-chat/${res.data.groupId}?name=${encodeURIComponent(res.data.groupName)}`);
-      } else {
-        Alert.alert('Error', res.message || 'Failed to create group');
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Connection failed');
-    } finally {
-      setCreating(false);
-    }
+      } else Alert.alert('Error', res.message || 'Failed to create clan');
+    } catch { Alert.alert('Error', 'Connection failed'); }
+    finally { setCreating(false); }
   };
 
   const renderItem = ({ item }) => {
-    const isSelected = selectedUsers.has(item.userId);
+    const isSelected = selected.has(item.userId);
     return (
-      <TouchableOpacity style={s.userItem} onPress={() => toggleUser(item.userId)} activeOpacity={0.6}>
-        <Avatar name={item.displayName} size={44} />
-        <Text style={s.userName}>{item.displayName}</Text>
-        <View style={[s.checkbox, isSelected && s.checkboxSelected]}>
-          {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+      <Pressable onPress={() => toggleUser(item.userId)} style={({ pressed }) => [s.row, pressed && s.pressed]}>
+        <Avatar name={item.displayName} size={40} />
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={s.name}>{item.displayName}</Text>
+          {!!item.username && <Text style={s.username}>@{item.username}</Text>}
         </View>
-      </TouchableOpacity>
+        {isSelected ? (
+          <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
+        ) : (
+          <View style={s.unchecked} />
+        )}
+      </Pressable>
     );
   };
 
   return (
     <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="close" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>New Clan</Text>
-        <TouchableOpacity
-          style={[s.createBtn, !groupName.trim() && s.createBtnDisabled]}
+        <Pressable onPress={() => router.back()} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+          <Text style={s.cancel}>Cancel</Text>
+        </Pressable>
+        <Text style={s.title}>New Clan</Text>
+        <Pressable
           onPress={handleCreate}
-          disabled={creating || !groupName.trim()}
+          disabled={!groupName.trim() || creating}
+          hitSlop={12}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
         >
           {creating ? (
-            <ActivityIndicator color={theme.colors.primary} size="small" />
+            <ActivityIndicator size="small" color={theme.colors.primary} />
           ) : (
-            <Text style={[s.createBtnText, !groupName.trim() && { color: theme.colors.textMuted }]}>Create</Text>
+            <Text style={[s.done, (!groupName.trim()) && { color: theme.colors.textGhost }]}>Create</Text>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       <View style={s.form}>
         <TextInput
-          style={s.input}
+          style={s.bigInput}
           placeholder="Clan name"
           placeholderTextColor={theme.colors.placeholder}
-          value={groupName}
-          onChangeText={setGroupName}
+          value={groupName} onChangeText={setGroupName}
+          maxLength={40}
         />
         <View style={s.divider} />
         <TextInput
-          style={s.input}
+          style={s.smallInput}
           placeholder="Description (optional)"
           placeholderTextColor={theme.colors.placeholder}
-          value={description}
-          onChangeText={setDescription}
+          value={description} onChangeText={setDescription}
+          maxLength={80}
         />
       </View>
 
-      <View style={s.sectionHeader}>
-        <Text style={s.sectionTitle}>ADD MATES</Text>
-        {selectedUsers.size > 0 && <Text style={s.selectedCount}>{selectedUsers.size} selected</Text>}
-      </View>
+      <Text style={s.sectionLabel}>ADD MATES {selected.size > 0 ? `· ${selected.size}` : ''}</Text>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={theme.colors.primary} />
@@ -129,14 +115,16 @@ export default function CreateGroupScreen() {
         <EmptyState
           icon="people-outline"
           title="No mates yet"
-          subtitle="Add people from the Contacts tab before creating a clan"
+          subtitle="Add friends from Contacts first"
         />
       ) : (
         <FlatList
           data={users}
           keyExtractor={item => item.userId}
           renderItem={renderItem}
+          style={s.list}
           ItemSeparatorComponent={() => <View style={s.sep} />}
+          contentContainerStyle={{ backgroundColor: theme.colors.surface }}
         />
       )}
     </View>
@@ -145,73 +133,54 @@ export default function CreateGroupScreen() {
 
 const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
-
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 12, paddingBottom: 12,
-    backgroundColor: t.colors.headerBg,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: t.colors.surface,
+    paddingHorizontal: 16, paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.colors.hairline,
   },
-  backBtn: { padding: 6 },
-  headerTitle: {
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.lg,
-    color: t.colors.text,
-  },
-  createBtn: { paddingHorizontal: 12, paddingVertical: 6, minWidth: 70, alignItems: 'flex-end' },
-  createBtnDisabled: {},
-  createBtnText: {
-    color: t.colors.primary,
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.md,
-  },
+  title: { fontFamily: t.typography.fontSemiBold, fontSize: 17, color: t.colors.text },
+  cancel: { fontFamily: t.typography.fontRegular, fontSize: 17, color: t.colors.primary },
+  done: { fontFamily: t.typography.fontSemiBold, fontSize: 17, color: t.colors.primary },
 
   form: {
     backgroundColor: t.colors.surface,
-    paddingHorizontal: 16, paddingVertical: 4,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
+    marginTop: 16, marginHorizontal: 16, borderRadius: 12,
+    overflow: 'hidden',
   },
-  input: {
-    color: t.colors.text,
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.md,
-    paddingVertical: 14,
+  bigInput: {
+    color: t.colors.text, fontFamily: t.typography.fontRegular,
+    fontSize: 17, paddingHorizontal: 14, paddingVertical: 12,
   },
-  divider: { height: 0.5, backgroundColor: t.colors.borderLight },
+  smallInput: {
+    color: t.colors.text, fontFamily: t.typography.fontRegular,
+    fontSize: 17, paddingHorizontal: 14, paddingVertical: 12,
+  },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14, backgroundColor: t.colors.hairline },
 
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 10, marginTop: 8,
-  },
-  sectionTitle: {
-    fontFamily: t.typography.fontMedium,
-    fontSize: t.fontSize.xs,
-    color: t.colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  selectedCount: {
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.sm,
-    color: t.colors.primary,
+  sectionLabel: {
+    fontFamily: t.typography.fontRegular, fontSize: 13, letterSpacing: 0.3,
+    color: t.colors.textMuted, marginTop: 22, marginBottom: 6, marginLeft: 28,
+    textTransform: 'uppercase',
   },
 
-  sep: { height: 0.5, marginLeft: 72, backgroundColor: t.colors.borderLight },
-
-  userItem: {
+  list: {
+    backgroundColor: t.colors.surface,
+    marginHorizontal: 16, borderRadius: 12,
+    overflow: 'hidden',
+    maxHeight: '100%',
+  },
+  row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, paddingHorizontal: 16,
+    paddingHorizontal: 14, paddingVertical: 10,
     backgroundColor: t.colors.surface,
   },
-  userName: {
-    flex: 1, marginLeft: 14,
-    color: t.colors.text,
-    fontSize: t.fontSize.md,
-    fontFamily: t.typography.fontRegular,
-  },
-  checkbox: {
+  pressed: { backgroundColor: t.colors.surfaceMuted },
+  name: { fontFamily: t.typography.fontRegular, fontSize: 17, color: t.colors.text },
+  username: { fontFamily: t.typography.fontRegular, fontSize: 13, color: t.colors.textMuted, marginTop: 2 },
+  unchecked: {
     width: 22, height: 22, borderRadius: 11,
     borderWidth: 1.5, borderColor: t.colors.border,
-    justifyContent: 'center', alignItems: 'center',
   },
-  checkboxSelected: { backgroundColor: t.colors.primary, borderColor: t.colors.primary },
+  sep: { height: StyleSheet.hairlineWidth, marginLeft: 66, backgroundColor: t.colors.hairline },
 });

@@ -1,23 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BlurHeader from '../../components/BlurHeader';
 import { useTheme } from '../../utils/theme';
 import { storage } from '../../utils/storage';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const theme = useTheme();
   const s = useMemo(() => makeStyles(theme), [theme]);
   const [prefs, setPrefs] = useState({ push: true, sound: true, vibration: true });
 
-  useEffect(() => {
-    storage.getNotifPreferences().then(setPrefs).catch(() => {});
-  }, []);
+  useEffect(() => { storage.getNotifPreferences().then(setPrefs).catch(() => {}); }, []);
 
   const update = (key, value) => {
     const next = { ...prefs, [key]: value };
@@ -26,62 +20,35 @@ export default function NotificationsScreen() {
   };
 
   const rows = [
-    {
-      key: 'push',
-      icon: 'notifications',
-      label: 'Push notifications',
-      sub: 'Alerts when you get new messages',
-    },
-    {
-      key: 'sound',
-      icon: 'volume-high',
-      label: 'Sound',
-      sub: 'Play a sound for new messages',
-    },
-    {
-      key: 'vibration',
-      icon: 'phone-portrait',
-      label: 'Vibration',
-      sub: 'Vibrate for new messages',
-    },
+    { key: 'push',      label: 'Allow notifications' },
+    { key: 'sound',     label: 'Sounds' },
+    { key: 'vibration', label: 'Vibration' },
   ];
 
   return (
     <View style={s.container}>
-      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Notifications</Text>
-        <View style={{ width: 28 }} />
-      </View>
+      <BlurHeader title="Notifications" onBack={() => router.back()} />
 
-      <ScrollView contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
         <View style={s.section}>
           {rows.map((r, idx) => (
             <View key={r.key}>
               <View style={s.row}>
-                <View style={s.rowIconBox}>
-                  <Ionicons name={r.icon} size={20} color={theme.colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowLabel}>{r.label}</Text>
-                  <Text style={s.rowSub}>{r.sub}</Text>
-                </View>
+                <Text style={s.rowLabel}>{r.label}</Text>
                 <Switch
                   value={!!prefs[r.key]}
                   onValueChange={(v) => update(r.key, v)}
-                  trackColor={{ false: theme.colors.borderLight, true: theme.colors.primary + '88' }}
-                  thumbColor={prefs[r.key] ? theme.colors.primary : theme.colors.surface}
+                  trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.success }}
+                  thumbColor="#fff"
+                  ios_backgroundColor={theme.colors.surfaceMuted}
                 />
               </View>
               {idx < rows.length - 1 && <View style={s.divider} />}
             </View>
           ))}
         </View>
-
-        <Text style={s.note}>
-          Push notifications require a native build. In Expo Go, only in-app alerts are shown.
+        <Text style={s.footnote}>
+          True background push requires a dev build. In Expo Go, you'll see in-app banners.
         </Text>
       </ScrollView>
     </View>
@@ -90,33 +57,19 @@ export default function NotificationsScreen() {
 
 const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 12, paddingBottom: 12,
-    backgroundColor: t.colors.headerBg,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
-  },
-  headerTitle: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.lg, color: t.colors.text },
   section: {
     backgroundColor: t.colors.surface,
-    borderTopWidth: 0.5, borderBottomWidth: 0.5,
-    borderColor: t.colors.headerBorder,
+    borderRadius: 12, overflow: 'hidden',
   },
   row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingVertical: 11,
+    minHeight: 44,
   },
-  rowIconBox: {
-    width: 34, height: 34, borderRadius: 9,
-    backgroundColor: t.colors.primary + '22',
-    justifyContent: 'center', alignItems: 'center', marginRight: 14,
-  },
-  rowLabel: { fontFamily: t.typography.fontRegular, fontSize: t.fontSize.md, color: t.colors.text },
-  rowSub: { fontFamily: t.typography.fontRegular, fontSize: 12, color: t.colors.textMuted, marginTop: 2 },
-  divider: { height: 0.5, marginLeft: 64, backgroundColor: t.colors.borderLight },
-  note: {
-    marginTop: 16, paddingHorizontal: 20,
-    fontFamily: t.typography.fontRegular, fontSize: 12,
-    color: t.colors.textMuted, textAlign: 'center',
+  rowLabel: { fontFamily: t.typography.fontRegular, fontSize: 17, color: t.colors.text },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14, backgroundColor: t.colors.hairline },
+  footnote: {
+    fontFamily: t.typography.fontRegular, fontSize: 13,
+    color: t.colors.textMuted, marginTop: 10, marginHorizontal: 12, lineHeight: 18,
   },
 });

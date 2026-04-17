@@ -45,4 +45,11 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
            "AND (m.senderId = :me OR m.receiverId = :me) " +
            "ORDER BY m.timestamp DESC")
     List<Message> findRecentOneToOneMessages(@Param("me") String me, Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("DELETE FROM Message m WHERE m.groupId IS NULL AND " +
+           "((m.senderId = :userId1 AND m.receiverId = :userId2) OR " +
+           " (m.senderId = :userId2 AND m.receiverId = :userId1))")
+    int deleteConversation(@Param("userId1") String userId1, @Param("userId2") String userId2);
 }

@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/theme';
 
@@ -10,8 +11,8 @@ export default function MainLayout() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: theme.colors.tabBarBg,
-          borderTopWidth: 0.5,
-          borderTopColor: theme.colors.tabBarBorder,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: theme.colors.hairline,
           height: 60,
           paddingBottom: 8,
           paddingTop: 6,
@@ -21,8 +22,7 @@ export default function MainLayout() {
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarLabelStyle: {
           fontFamily: theme.typography.fontMedium,
-          fontSize: 10,
-          marginTop: 0,
+          fontSize: 11,
         },
       }}
     >
@@ -49,7 +49,7 @@ export default function MainLayout() {
         options={{
           title: 'Clans',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'flame' : 'flame-outline'} size={26} color={color} />
+            <Ionicons name={focused ? 'people-circle' : 'people-circle-outline'} size={26} color={color} />
           ),
         }}
       />

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, Image,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  View, Text, StyleSheet, TextInput, FlatList, Image,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Pressable, Alert, Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import Avatar from '../../../components/Avatar';
+import ActionSheet from '../../../components/ActionSheet';
 import { api } from '../../../utils/api';
 import { storage } from '../../../utils/storage';
 import { sendChatMessage, addMessageHandler, sendTyping, sendReadReceipt } from '../../../utils/websocket';
@@ -14,57 +16,36 @@ import {
   generateAesKey, generateIv, encryptMessage, decryptMessage,
   encryptAesKey, decryptAesKey,
 } from '../../../utils/crypto';
-import Avatar from '../../../components/Avatar';
 import { setActiveChatPeer } from '../../../utils/notifications';
 import { useTheme } from '../../../utils/theme';
 
 const PAGE_SIZE = 30;
 
-function formatTime(date) {
+const formatTime = (date) => {
   const h = date.getHours();
   const m = String(date.getMinutes()).padStart(2, '0');
   const hh = h % 12 || 12;
   const ampm = h >= 12 ? 'PM' : 'AM';
   return `${hh}:${m} ${ampm}`;
-}
+};
 
 function Bubble({ item, isMe, theme, s }) {
   const time = formatTime(new Date(item.createdAt));
+
   if (item.image) {
     return (
-      <View style={[s.bubbleRow, isMe ? s.rowRight : s.rowLeft]}>
-        <View style={[s.imageBubble, isMe ? s.sentBorder : s.recvBorder]}>
-          <Image source={{ uri: item.image }} style={s.image} resizeMode="cover" />
-          <View style={s.imageTimeRow}>
-            <Text style={[s.time, isMe ? s.timeSent : s.timeRecv]}>{time}</Text>
-            {isMe && (
-              <Ionicons
-                name={item.read ? 'checkmark-done' : item.sent ? 'checkmark' : 'time-outline'}
-                size={14}
-                color={theme.colors.bubbleSentTime}
-                style={{ marginLeft: 4 }}
-              />
-            )}
-          </View>
+      <View style={[s.row, isMe ? s.rowR : s.rowL]}>
+        <View style={[s.imgBubble, isMe ? s.imgSent : s.imgRecv]}>
+          <Image source={{ uri: item.image }} style={s.img} resizeMode="cover" />
         </View>
       </View>
     );
   }
+
   return (
-    <View style={[s.bubbleRow, isMe ? s.rowRight : s.rowLeft]}>
+    <View style={[s.row, isMe ? s.rowR : s.rowL]}>
       <View style={[s.bubble, isMe ? s.sent : s.recv]}>
         <Text style={[s.text, isMe ? s.textSent : s.textRecv]}>{item.text}</Text>
-        <View style={s.timeRow}>
-          <Text style={[s.time, isMe ? s.timeSent : s.timeRecv]}>{time}</Text>
-          {isMe && (
-            <Ionicons
-              name={item.read ? 'checkmark-done' : item.sent ? 'checkmark' : 'time-outline'}
-              size={14}
-              color={theme.colors.bubbleSentTime}
-              style={{ marginLeft: 4 }}
-            />
-          )}
-        </View>
       </View>
     </View>
   );
@@ -83,6 +64,8 @@ export default function ChatRoomScreen() {
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [hasEarlier, setHasEarlier] = useState(false);
   const [online, setOnline] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
 
   const currentUserId = useRef(null);
   const myKeys = useRef(null);
@@ -93,6 +76,7 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     setActiveChatPeer(receiverId);
     initChat();
+    storage.isMuted(receiverId).then(setMuted);
     const remove = addMessageHandler(handleWsMessage);
     return () => {
       setActiveChatPeer(null);
@@ -100,6 +84,77 @@ export default function ChatRoomScreen() {
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
     };
   }, [receiverId]);
+
+  const handleViewProfile = () => {
+    Alert.alert(
+      receiverName || 'Profile',
+      `@${receiverName?.toLowerCase().replace(/\s/g, '_') || 'user'}\n\nMore profile features coming soon.`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleToggleMute = async () => {
+    const nowMuted = await storage.toggleMute(receiverId);
+    setMuted(nowMuted);
+    Alert.alert(
+      nowMuted ? 'Muted' : 'Unmuted',
+      nowMuted
+        ? `You won't get notifications from ${receiverName}.`
+        : `Notifications from ${receiverName} are on.`,
+    );
+  };
+
+  const handleClearChat = () => {
+    Alert.alert(
+      'Clear chat?',
+      `This deletes all messages between you and ${receiverName}. Both sides lose the history. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear', style: 'destructive',
+          onPress: async () => {
+            const res = await api.clearConversation(receiverId);
+            if (res.success) {
+              setMessages([]);
+              Alert.alert('Cleared', 'Conversation deleted.');
+            } else {
+              Alert.alert('Error', res.message || 'Could not clear chat.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleUnfriend = () => {
+    Alert.alert(
+      `Remove ${receiverName}?`,
+      "You'll be removed from each other's contacts.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive',
+          onPress: async () => {
+            const res = await api.unfriend(receiverId);
+            if (res.success) {
+              Alert.alert('Removed', `${receiverName} is no longer a mate.`);
+              router.back();
+            } else {
+              Alert.alert('Error', res.message || 'Could not remove.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleShareProfile = async () => {
+    try {
+      await Share.share({
+        message: `Chat with ${receiverName} on Wave`,
+      });
+    } catch {}
+  };
 
   const initChat = async () => {
     const session = await storage.getSession();
@@ -188,14 +243,10 @@ export default function ChatRoomScreen() {
     const text = input.trim();
     if (!text || !receiverPublicKey.current || !myKeys.current) return;
     setInput('');
-
     const localId = `pending-${Date.now()}`;
     const pending = {
-      _id: localId,
-      senderId: currentUserId.current,
-      text,
-      createdAt: new Date().toISOString(),
-      sent: false,
+      _id: localId, senderId: currentUserId.current,
+      text, createdAt: new Date().toISOString(), sent: false,
     };
     setMessages(prev => [pending, ...prev]);
 
@@ -223,11 +274,8 @@ export default function ChatRoomScreen() {
       const asset = result.assets[0];
       const fileName = asset.uri.split('/').pop();
       const pending = {
-        _id: `img-${Date.now()}`,
-        senderId: currentUserId.current,
-        image: asset.uri,
-        createdAt: new Date().toISOString(),
-        sent: false,
+        _id: `img-${Date.now()}`, senderId: currentUserId.current,
+        image: asset.uri, createdAt: new Date().toISOString(), sent: false,
       };
       setMessages(prev => [pending, ...prev]);
       const uploadRes = await api.uploadFile(asset.uri, fileName, 'image/jpeg');
@@ -253,20 +301,37 @@ export default function ChatRoomScreen() {
   return (
     <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
           <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Avatar name={receiverName} size={38} />
-        <View style={s.headerInfo}>
-          <Text style={s.headerName} numberOfLines={1}>{receiverName}</Text>
-          <Text style={s.headerStatus}>
-            {isTyping ? 'typing…' : online ? 'online' : 'last seen recently'}
-          </Text>
+        </Pressable>
+        <View style={s.headerCenter}>
+          <Avatar name={receiverName} size={32} showOnline online={online} />
+          <View style={{ marginLeft: 10 }}>
+            <Text style={s.headerName} numberOfLines={1}>{receiverName}</Text>
+            <Text style={s.headerStatus}>
+              {isTyping ? 'typing…' : online ? 'online' : 'last seen recently'}
+            </Text>
+          </View>
         </View>
-        <TouchableOpacity style={s.headerBtn} hitSlop={8}>
-          <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
-        </TouchableOpacity>
+        <Pressable onPress={() => setMenuOpen(true)} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+          <Ionicons name="ellipsis-horizontal-circle-outline" size={26} color={theme.colors.primary} />
+        </Pressable>
       </View>
+
+      <ActionSheet
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title={receiverName}
+        actions={[
+          { icon: 'person-circle-outline', label: 'View Profile', onPress: handleViewProfile },
+          { icon: muted ? 'notifications' : 'notifications-off-outline',
+            label: muted ? 'Unmute Notifications' : 'Mute Notifications',
+            onPress: handleToggleMute },
+          { icon: 'share-outline', label: 'Share', onPress: handleShareProfile },
+          { icon: 'trash-outline', label: 'Clear Chat', destructive: true, onPress: handleClearChat },
+          { icon: 'person-remove-outline', label: 'Remove from Contacts', destructive: true, onPress: handleUnfriend },
+        ]}
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -274,7 +339,7 @@ export default function ChatRoomScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? (insets.top + 50) : 0}
       >
         <FlatList
-          style={s.list}
+          style={{ flex: 1, backgroundColor: theme.colors.chatBg }}
           inverted
           data={messages}
           keyExtractor={item => String(item._id)}
@@ -289,25 +354,27 @@ export default function ChatRoomScreen() {
         />
 
         <View style={[s.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-          <TouchableOpacity style={s.attachBtn} onPress={pickImage} hitSlop={6}>
-            <Ionicons name="attach" size={24} color={theme.colors.textMuted} />
-          </TouchableOpacity>
-          <TextInput
-            style={s.textInput}
-            placeholder="Message"
-            placeholderTextColor={theme.colors.textMuted}
-            value={input}
-            onChangeText={onTextChange}
-            multiline
-            maxLength={4000}
-          />
-          <TouchableOpacity
-            style={[s.sendBtn, !input.trim() && s.sendBtnDisabled]}
-            onPress={onSend}
-            disabled={!input.trim()}
-          >
-            <Ionicons name="send" size={18} color="#fff" />
-          </TouchableOpacity>
+          <Pressable onPress={pickImage} style={({ pressed }) => [s.attachBtn, pressed && { opacity: 0.5 }]}>
+            <Ionicons name="camera-outline" size={24} color={theme.colors.primary} />
+          </Pressable>
+          <View style={s.inputWrap}>
+            <TextInput
+              style={s.textInput}
+              placeholder="Send Message"
+              placeholderTextColor={theme.colors.textMuted}
+              value={input}
+              onChangeText={onTextChange}
+              multiline
+              maxLength={4000}
+            />
+            <Pressable
+              onPress={onSend}
+              disabled={!input.trim()}
+              style={({ pressed }) => [s.sendBtn, !input.trim() && s.sendBtnDisabled, pressed && { opacity: 0.6 }]}
+            >
+              <Ionicons name="arrow-up" size={18} color="#fff" />
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -316,88 +383,69 @@ export default function ChatRoomScreen() {
 
 const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.chatBg },
+
   header: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: t.colors.headerBg,
-    paddingBottom: 10, paddingHorizontal: 8,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
+    paddingHorizontal: 12, paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.colors.hairline,
   },
-  backBtn: { padding: 6, marginRight: 2 },
-  headerInfo: { flex: 1, marginLeft: 10 },
-  headerName: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.lg, color: t.colors.text },
-  headerStatus: { fontSize: 12, fontFamily: t.typography.fontRegular, color: t.colors.textSecondary, marginTop: 1 },
-  headerBtn: { padding: 8 },
+  headerCenter: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    marginLeft: 8, marginRight: 8,
+  },
+  headerName: { fontFamily: t.typography.fontSemiBold, fontSize: 16, color: t.colors.text, letterSpacing: -0.2 },
+  headerStatus: { fontSize: 12, fontFamily: t.typography.fontRegular, color: t.colors.textMuted, marginTop: 1 },
 
-  list: { flex: 1, backgroundColor: t.colors.chatBg },
-  listContent: { paddingVertical: 8, paddingHorizontal: 8 },
-
-  bubbleRow: { flexDirection: 'row', marginVertical: 2 },
-  rowLeft: { justifyContent: 'flex-start' },
-  rowRight: { justifyContent: 'flex-end' },
-
+  listContent: { paddingVertical: 10, paddingHorizontal: 10 },
+  row: { flexDirection: 'row', marginVertical: 2 },
+  rowL: { justifyContent: 'flex-start' },
+  rowR: { justifyContent: 'flex-end' },
   bubble: {
-    maxWidth: '78%', paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 14,
+    maxWidth: '78%',
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 18,
   },
-  sent: {
-    backgroundColor: t.colors.bubbleSent,
-    borderBottomRightRadius: 4,
-  },
-  recv: {
-    backgroundColor: t.colors.bubbleReceived,
-    borderBottomLeftRadius: 4,
-    borderWidth: t.isDark ? 0 : 0.5,
-    borderColor: t.colors.bubbleBorder,
-  },
-  sentBorder: { borderBottomRightRadius: 4 },
-  recvBorder: { borderBottomLeftRadius: 4 },
+  sent: { backgroundColor: t.colors.bubbleSent },
+  recv: { backgroundColor: t.colors.bubbleReceived },
 
-  imageBubble: {
-    maxWidth: '78%', borderRadius: 14, overflow: 'hidden',
-    backgroundColor: t.colors.surfaceMuted,
-  },
-  image: { width: 240, height: 240 },
-  imageTimeRow: {
-    position: 'absolute', bottom: 6, right: 8,
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
-  },
+  imgBubble: { maxWidth: '78%', borderRadius: 18, overflow: 'hidden' },
+  imgSent: {},
+  imgRecv: {},
+  img: { width: 240, height: 240 },
 
-  text: {
-    fontSize: t.fontSize.md, lineHeight: 21,
-    fontFamily: t.typography.fontRegular,
-  },
+  text: { fontSize: 16, lineHeight: 21, fontFamily: t.typography.fontRegular },
   textSent: { color: t.colors.bubbleSentText },
   textRecv: { color: t.colors.bubbleReceivedText },
 
-  timeRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 1 },
-  time: { fontSize: 11, fontFamily: t.typography.fontRegular },
-  timeSent: { color: t.colors.bubbleSentTime },
-  timeRecv: { color: t.colors.bubbleReceivedTime },
-
   inputBar: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    paddingHorizontal: 6, paddingTop: 6,
-    backgroundColor: t.colors.surface,
-    borderTopWidth: 0.5, borderTopColor: t.colors.headerBorder,
+    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+    paddingHorizontal: 10, paddingTop: 8,
+    backgroundColor: t.colors.headerBg,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.colors.hairline,
   },
-  attachBtn: { padding: 10, paddingBottom: 12 },
+  attachBtn: {
+    width: 32, height: 32, justifyContent: 'center', alignItems: 'center',
+    marginBottom: 5,
+  },
+  inputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'flex-end',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: t.colors.hairline,
+    borderRadius: 20, paddingLeft: 14, paddingRight: 4,
+    minHeight: 36, maxHeight: 120,
+    backgroundColor: t.colors.surface,
+  },
   textInput: {
     flex: 1,
-    maxHeight: 120, minHeight: 40,
-    color: t.colors.text,
-    fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.md,
-    backgroundColor: t.colors.inputBg,
-    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10,
-    marginHorizontal: 4,
+    color: t.colors.text, fontFamily: t.typography.fontRegular,
+    fontSize: 16, paddingVertical: 7, padding: 0,
   },
   sendBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: t.colors.primary,
     justifyContent: 'center', alignItems: 'center',
-    marginLeft: 4, marginBottom: 4,
+    marginBottom: 4, marginLeft: 4,
   },
-  sendBtnDisabled: { opacity: 0.4 },
+  sendBtnDisabled: { backgroundColor: t.colors.textGhost },
 });

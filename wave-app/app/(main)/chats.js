@@ -1,7 +1,5 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import {
-  View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-} from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,16 +8,11 @@ import EmptyState from '../../components/EmptyState';
 import { useConversations } from '../../hooks/useConversations';
 import { useTheme } from '../../utils/theme';
 
-const ITEM_HEIGHT = 72;
-
 function formatWhen(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
+  const sameDay = d.toDateString() === now.toDateString();
   if (sameDay) {
     const h = d.getHours();
     const m = String(d.getMinutes()).padStart(2, '0');
@@ -35,22 +28,28 @@ function formatWhen(iso) {
 const previewText = (item) => {
   const who = item.iSentLast ? 'You: ' : '';
   const type = item.lastMessageType || 'TEXT';
-  if (type === 'IMAGE') return `${who}📷 Photo`;
-  if (type === 'FILE') return `${who}📄 File`;
+  if (type === 'IMAGE') return `${who}Photo`;
+  if (type === 'FILE') return `${who}File`;
   return `${who}New message`;
 };
 
-const ConversationItem = memo(({ item, onPress, theme, s }) => (
-  <TouchableOpacity style={s.item} activeOpacity={0.6} onPress={() => onPress(item)}>
-    <Avatar name={item.displayName} size={54} showOnline online={item.online} />
+const Row = memo(({ item, onPress, theme, s }) => (
+  <Pressable
+    onPress={() => onPress(item)}
+    style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+  >
+    <Avatar name={item.displayName} size={52} showOnline online={item.online} />
     <View style={s.info}>
-      <View style={s.topRow}>
+      <View style={s.topLine}>
         <Text style={s.name} numberOfLines={1}>{item.displayName}</Text>
         <Text style={s.time}>{formatWhen(item.lastMessageAt)}</Text>
       </View>
-      <Text style={s.sub} numberOfLines={1}>{previewText(item)}</Text>
+      <View style={s.bottomLine}>
+        <Text style={s.preview} numberOfLines={2}>{previewText(item)}</Text>
+        <Ionicons name="chevron-forward" size={14} color={theme.colors.textGhost} />
+      </View>
     </View>
-  </TouchableOpacity>
+  </Pressable>
 ));
 
 export default function DMsScreen() {
@@ -67,14 +66,16 @@ export default function DMsScreen() {
   return (
     <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <Text style={s.title}>DMs</Text>
-        <TouchableOpacity
-          style={s.searchBtn}
-          onPress={() => router.push('/(main)/friends')}
-          hitSlop={10}
-        >
-          <Ionicons name="search" size={22} color={theme.colors.text} />
-        </TouchableOpacity>
+        <View style={s.headerRow}>
+          <Text style={s.title}>DMs</Text>
+          <Pressable
+            onPress={() => router.push('/(main)/friends')}
+            hitSlop={10}
+            style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+          >
+            <Ionicons name="create-outline" size={26} color={theme.colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       {error ? (
@@ -82,8 +83,12 @@ export default function DMsScreen() {
       ) : (
         <FlatList
           data={conversations}
-          keyExtractor={item => item.userId}
-          renderItem={({ item }) => <ConversationItem item={item} onPress={openChat} theme={theme} s={s} />}
+          keyExtractor={(item) => item.userId}
+          renderItem={({ item }) => (
+            <Row item={item} onPress={openChat} theme={theme} s={s} />
+          )}
+          ItemSeparatorComponent={() => <View style={s.separator} />}
+          contentContainerStyle={conversations.length === 0 ? s.emptyContent : null}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -91,81 +96,73 @@ export default function DMsScreen() {
               tintColor={theme.colors.primary}
             />
           }
-          contentContainerStyle={conversations.length === 0 ? s.emptyContent : null}
-          getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
-          ItemSeparatorComponent={() => <View style={s.separator} />}
           ListEmptyComponent={
             !loading && (
               <EmptyState
                 icon="chatbubbles-outline"
-                title="No DMs yet"
-                subtitle="Tap a mate in Contacts to start chatting"
+                title="No messages yet"
+                subtitle="Tap the pencil to start a DM"
               />
             )
           }
         />
       )}
-
-      <TouchableOpacity
-        style={s.fab}
-        onPress={() => router.push('/(main)/friends')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="create-outline" size={26} color="#FFFFFF" />
-      </TouchableOpacity>
     </View>
   );
 }
 
 const makeStyles = (t) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: t.colors.background },
+  container: { flex: 1, backgroundColor: t.colors.surface },
+
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingBottom: 10,
-    backgroundColor: t.colors.headerBg,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
+    backgroundColor: t.colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.colors.hairline,
+    paddingHorizontal: 20, paddingBottom: 10,
   },
-  title: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.xxl, color: t.colors.text },
-  searchBtn: { padding: 6 },
+  headerRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  title: {
+    fontFamily: t.typography.fontSemiBold,
+    fontSize: 34, color: t.colors.text,
+    letterSpacing: -0.5,
+  },
 
   emptyContent: { flex: 1 },
-  item: {
-    height: ITEM_HEIGHT,
+
+  row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 16, paddingVertical: 10,
     backgroundColor: t.colors.surface,
   },
-  info: { flex: 1, marginLeft: 14, justifyContent: 'center' },
-  topRow: {
+  rowPressed: { backgroundColor: t.colors.surfaceMuted },
+  info: { flex: 1, marginLeft: 12 },
+  topLine: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 3,
   },
+  bottomLine: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
   name: {
     fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.md,
-    color: t.colors.text, flex: 1, marginRight: 8,
+    fontSize: 17, color: t.colors.text, flex: 1, marginRight: 8,
+    letterSpacing: -0.2,
   },
   time: {
     fontFamily: t.typography.fontRegular,
-    fontSize: 12,
-    color: t.colors.textMuted,
+    fontSize: 13, color: t.colors.textMuted,
   },
-  sub: {
+  preview: {
     fontFamily: t.typography.fontRegular,
-    fontSize: t.fontSize.sm,
-    color: t.colors.textMuted,
-  },
-  separator: {
-    height: 0.5, marginLeft: 84,
-    backgroundColor: t.colors.borderLight,
+    fontSize: 15, color: t.colors.textMuted, flex: 1, marginRight: 8,
+    lineHeight: 20,
   },
 
-  fab: {
-    position: 'absolute',
-    right: 18, bottom: 20,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: t.colors.primary,
-    justifyContent: 'center', alignItems: 'center',
-    ...t.shadow.lg,
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 80,
+    backgroundColor: t.colors.hairline,
   },
 });

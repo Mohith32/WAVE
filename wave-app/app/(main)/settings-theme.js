@@ -1,74 +1,47 @@
 import { useMemo } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BlurHeader from '../../components/BlurHeader';
 import { useTheme } from '../../utils/theme';
 
-export default function ThemeScreen() {
+export default function AppearanceScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const theme = useTheme();
   const s = useMemo(() => makeStyles(theme), [theme]);
 
   const options = [
-    { key: 'system', label: 'System default', icon: 'phone-portrait', sub: 'Follow your device' },
-    { key: 'light', label: 'Light', icon: 'sunny', sub: 'Bright and clear' },
-    { key: 'dark', label: 'Dark', icon: 'moon', sub: 'Easy on the eyes' },
+    { key: 'system', label: 'Automatic' },
+    { key: 'light',  label: 'Light' },
+    { key: 'dark',   label: 'Dark' },
   ];
 
   return (
     <View style={s.container}>
-      <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Theme</Text>
-        <View style={{ width: 28 }} />
-      </View>
+      <BlurHeader title="Appearance" onBack={() => router.back()} />
 
-      <ScrollView contentContainerStyle={{ paddingTop: 16 }}>
-        <View style={s.previewBox}>
-          <View style={[s.previewBubbleL]}>
-            <Text style={s.previewTextL}>Hey! 👋</Text>
-          </View>
-          <View style={[s.previewBubbleR]}>
-            <Text style={s.previewTextR}>Looking fresh</Text>
-          </View>
-        </View>
-
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
+        <Text style={s.sectionLabel}>APPEARANCE</Text>
         <View style={s.section}>
           {options.map((opt, idx) => {
             const selected = theme.preference === opt.key;
             return (
               <View key={opt.key}>
-                <TouchableOpacity
-                  style={s.row}
+                <Pressable
                   onPress={() => theme.setPreference(opt.key)}
-                  activeOpacity={0.6}
+                  style={({ pressed }) => [s.row, pressed && s.pressed]}
                 >
-                  <View style={[s.rowIconBox, selected && s.rowIconBoxActive]}>
-                    <Ionicons
-                      name={opt.icon}
-                      size={20}
-                      color={selected ? '#fff' : theme.colors.primary}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.rowLabel}>{opt.label}</Text>
-                    <Text style={s.rowSub}>{opt.sub}</Text>
-                  </View>
-                  <View style={[s.radioOuter, selected && s.radioOuterActive]}>
-                    {selected && <View style={s.radioInner} />}
-                  </View>
-                </TouchableOpacity>
+                  <Text style={s.rowLabel}>{opt.label}</Text>
+                  {selected && <Ionicons name="checkmark" size={22} color={theme.colors.primary} />}
+                </Pressable>
                 {idx < options.length - 1 && <View style={s.divider} />}
               </View>
             );
           })}
         </View>
+        <Text style={s.footnote}>
+          Choose Automatic to follow your device's appearance setting.
+        </Text>
       </ScrollView>
     </View>
   );
@@ -76,59 +49,21 @@ export default function ThemeScreen() {
 
 const makeStyles = (t) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 12, paddingBottom: 12,
-    backgroundColor: t.colors.headerBg,
-    borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
+  sectionLabel: {
+    fontFamily: t.typography.fontRegular, fontSize: 13, letterSpacing: 0.3,
+    color: t.colors.textMuted, marginTop: 16, marginBottom: 6, marginLeft: 12,
+    textTransform: 'uppercase',
   },
-  headerTitle: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.lg, color: t.colors.text },
-
-  previewBox: {
-    marginHorizontal: 16, marginBottom: 20,
-    padding: 16, borderRadius: 14,
-    backgroundColor: t.colors.chatBg,
-    borderWidth: 0.5, borderColor: t.colors.border,
-  },
-  previewBubbleL: {
-    alignSelf: 'flex-start', maxWidth: '70%',
-    backgroundColor: t.colors.bubbleReceived,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, borderBottomLeftRadius: 4,
-    borderWidth: t.isDark ? 0 : 0.5, borderColor: t.colors.bubbleBorder,
-    marginBottom: 4,
-  },
-  previewBubbleR: {
-    alignSelf: 'flex-end', maxWidth: '70%',
-    backgroundColor: t.colors.bubbleSent,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, borderBottomRightRadius: 4,
-  },
-  previewTextL: { fontSize: t.fontSize.md, color: t.colors.bubbleReceivedText, fontFamily: t.typography.fontRegular },
-  previewTextR: { fontSize: t.fontSize.md, color: t.colors.bubbleSentText, fontFamily: t.typography.fontRegular },
-
-  section: {
-    backgroundColor: t.colors.surface,
-    borderTopWidth: 0.5, borderBottomWidth: 0.5,
-    borderColor: t.colors.headerBorder,
-  },
+  section: { backgroundColor: t.colors.surface, borderRadius: 12, overflow: 'hidden' },
   row: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingVertical: 12, minHeight: 44,
   },
-  rowIconBox: {
-    width: 34, height: 34, borderRadius: 9,
-    backgroundColor: t.colors.primary + '22',
-    justifyContent: 'center', alignItems: 'center', marginRight: 14,
+  pressed: { backgroundColor: t.colors.surfaceMuted },
+  rowLabel: { fontFamily: t.typography.fontRegular, fontSize: 17, color: t.colors.text },
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 14, backgroundColor: t.colors.hairline },
+  footnote: {
+    fontFamily: t.typography.fontRegular, fontSize: 13,
+    color: t.colors.textMuted, marginTop: 6, marginHorizontal: 12, lineHeight: 18,
   },
-  rowIconBoxActive: { backgroundColor: t.colors.primary },
-  rowLabel: { fontFamily: t.typography.fontRegular, fontSize: t.fontSize.md, color: t.colors.text },
-  rowSub: { fontFamily: t.typography.fontRegular, fontSize: 12, color: t.colors.textMuted, marginTop: 2 },
-  divider: { height: 0.5, marginLeft: 64, backgroundColor: t.colors.borderLight },
-
-  radioOuter: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: t.colors.border,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  radioOuterActive: { borderColor: t.colors.primary },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: t.colors.primary },
 });
