@@ -142,6 +142,16 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok("Public key updated"));
     }
 
+    @PutMapping("/push-token")
+    public ResponseEntity<ApiResponse<Void>> updatePushToken(@RequestBody Map<String, String> body) {
+        String myId = me();
+        if (myId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Unauthorized"));
+        }
+        userService.updatePushToken(UUID.fromString(myId), body.get("token"));
+        return ResponseEntity.ok(ApiResponse.ok("Push token updated"));
+    }
+
     @GetMapping("/user/{userId}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getUser(@PathVariable String userId) {
         return userService.findById(UUID.fromString(userId))

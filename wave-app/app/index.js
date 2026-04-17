@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { storage } from '../utils/storage';
 import { setAuthToken } from '../utils/api';
 import { connectWebSocket } from '../utils/websocket';
+import { registerForPushNotifications } from '../utils/notifications';
 import { useTheme } from '../utils/theme';
 
 // Splash screen stays visible until this route renders + we navigate away.
@@ -22,6 +23,7 @@ export default function Index() {
         if (session?.token) {
           setAuthToken(session.token);
           connectWebSocket(session.token);
+          registerForPushNotifications();
           router.replace('/(main)/chats');
         } else {
           router.replace('/(auth)/login');

@@ -8,6 +8,7 @@ import com.wave.wave.security.JwtUtil;
 import com.wave.wave.service.FriendshipService;
 import com.wave.wave.service.GroupService;
 import com.wave.wave.service.MessageService;
+import com.wave.wave.service.PushNotificationService;
 import com.wave.wave.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,6 +40,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Autowired
     private FriendshipService friendshipService;
+
+    @Autowired
+    private PushNotificationService pushService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -124,6 +128,21 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         deliverOrPublish(msg.getReceiverId(), msgJson);
         deliverOrPublish(senderId, sentJson);
+
+        // Push notification: if the receiver isn't connected locally, they may be
+        // offline or on another instance. Send a push so their device gets notified.
+        // (Duplicates with WS are filtered client-side when the chat is open.)
+        if (!isLocallyConnected(msg.getReceiverId())) {
+            String senderName = userService.findById(UUID.fromString(senderId))
+                    .map(u -> u.getDisplayName())
+                    .orElse("Someone");
+            pushService.sendDmNotification(msg.getReceiverId(), senderName, msg.getMessageType());
+        }
+    }
+
+    private boolean isLocallyConnected(String userId) {
+        WebSocketSession s = sessions.get(userId);
+        return s != null && s.isOpen();
     }
 
     private void handleGroupMessage(String senderId, JsonNode json) throws Exception {
@@ -147,8 +166,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         String msgJson = objectMapper.writeValueAsString(Map.of("type", "group_message", "data", saved));
 
         List<GroupMember> members = groupService.getGroupMembers(groupId);
+        String senderName = userService.findById(UUID.fromString(senderId))
+                .map(u -> u.getDisplayName()).orElse("Someone");
+        String clanName = groupService.getGroup(UUID.fromString(groupId))
+                .map(g -> g.getGroupName()).orElse("Clan");
+
         for (GroupMember member : members) {
             deliverOrPublish(member.getUserId(), msgJson);
+            if (!member.getUserId().equals(senderId) && !isLocallyConnected(member.getUserId())) {
+                pushService.sendClanNotification(member.getUserId(), clanName, senderName, msg.getMessageType());
+            }
         }
     }
 

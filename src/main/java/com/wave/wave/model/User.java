@@ -1,7 +1,6 @@
 package com.wave.wave.model;
 
 import jakarta.persistence.*;
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -36,6 +35,9 @@ public class User {
     @Column(nullable = false)
     private boolean online = false;
 
+    @Column(length = 200)
+    private String expoPushToken;
+
     public User() {}
 
     public UUID getUserId() { return userId; }
@@ -64,4 +66,7 @@ public class User {
 
     public boolean isOnline() { return online; }
     public void setOnline(boolean online) { this.online = online; }
+
+    public String getExpoPushToken() { return expoPushToken; }
+    public void setExpoPushToken(String expoPushToken) { this.expoPushToken = expoPushToken; }
 }

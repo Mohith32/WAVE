@@ -15,6 +15,7 @@ import {
   encryptAesKey, decryptAesKey,
 } from '../../../utils/crypto';
 import Avatar from '../../../components/Avatar';
+import { setActiveChatPeer } from '../../../utils/notifications';
 import { useTheme } from '../../../utils/theme';
 
 const PAGE_SIZE = 30;
@@ -90,9 +91,11 @@ export default function ChatRoomScreen() {
   const typingTimeout = useRef(null);
 
   useEffect(() => {
+    setActiveChatPeer(receiverId);
     initChat();
     const remove = addMessageHandler(handleWsMessage);
     return () => {
+      setActiveChatPeer(null);
       remove();
       if (typingTimeout.current) clearTimeout(typingTimeout.current);
     };

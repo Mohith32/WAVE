@@ -99,6 +99,14 @@ public class UserService {
         });
     }
 
+    @CacheEvict(value = "users", key = "#userId")
+    public void updatePushToken(UUID userId, String expoPushToken) {
+        userRepo.findById(userId).ifPresent(user -> {
+            user.setExpoPushToken(expoPushToken == null || expoPushToken.isBlank() ? null : expoPushToken);
+            userRepo.save(user);
+        });
+    }
+
     private String generateUsername(String displayName) {
         String base = displayName.toLowerCase().replaceAll("[^a-z0-9]", "").substring(0, Math.min(displayName.length(), 12));
         String candidate = base + "_" + UUID.randomUUID().toString().substring(0, 4);

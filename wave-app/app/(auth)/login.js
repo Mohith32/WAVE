@@ -9,6 +9,7 @@ import { api, setAuthToken } from '../../utils/api';
 import { storage } from '../../utils/storage';
 import { connectWebSocket } from '../../utils/websocket';
 import { generateKeyPair } from '../../utils/crypto';
+import { registerForPushNotifications } from '../../utils/notifications';
 import { useTheme } from '../../utils/theme';
 
 export default function LoginScreen() {
@@ -40,6 +41,8 @@ export default function LoginScreen() {
         setAuthToken(token);
         await storage.saveSession({ token, userId, displayName, email: userEmail });
         connectWebSocket(token);
+        // Fire-and-forget — fails silently in Expo Go
+        registerForPushNotifications();
         router.replace('/(main)/chats');
       } else {
         Alert.alert('Login failed', res.message || 'Invalid credentials.');

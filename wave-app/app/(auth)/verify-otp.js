@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api, setAuthToken } from '../../utils/api';
 import { storage } from '../../utils/storage';
 import { connectWebSocket } from '../../utils/websocket';
+import { registerForPushNotifications } from '../../utils/notifications';
 import { useTheme } from '../../utils/theme';
 
 const CODE_LEN = 6;
@@ -83,6 +84,7 @@ export default function VerifyOtpScreen() {
         await storage.saveSession({ token, userId, displayName: dn, email: userEmail });
         await storage.saveKeyPair({ publicKey, privateKey });
         connectWebSocket(token);
+        registerForPushNotifications();
         router.replace('/(main)/chats');
       } else {
         Alert.alert('Logged in failed', loginRes.message || 'Please try logging in.');

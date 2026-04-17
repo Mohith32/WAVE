@@ -91,6 +91,12 @@ export const api = {
     body: JSON.stringify({ publicKey }),
   }),
 
+  updatePushToken: (expoPushToken) => request(`${API_BASE}/api/auth/push-token`, {
+    method: 'PUT',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ token: expoPushToken }),
+  }),
+
   getConversation: (userId1, userId2) => request(
     `${API_BASE}/api/messages/conversation?userId1=${userId1}&userId2=${userId2}`,
     { headers: jsonHeaders() }
