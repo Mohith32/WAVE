@@ -7,6 +7,8 @@ const KEYS = {
   DISPLAY_NAME: 'wave_display_name',
   PRIVATE_KEY: 'wave_private_key',
   PUBLIC_KEY: 'wave_public_key',
+  THEME_PREF: 'wave_theme_preference',
+  NOTIF_PREF: 'wave_notif_preferences',
 };
 
 export const storage = {
@@ -43,5 +45,28 @@ export const storage = {
     const privateKey = await SecureStore.getItemAsync(KEYS.PRIVATE_KEY);
     if (!publicKey || !privateKey) return null;
     return { publicKey, privateKey };
+  },
+
+  clearKeyPair: async () => {
+    await SecureStore.deleteItemAsync(KEYS.PUBLIC_KEY);
+    await SecureStore.deleteItemAsync(KEYS.PRIVATE_KEY);
+  },
+
+  // Theme: 'system' | 'light' | 'dark'
+  getThemePreference: async () => {
+    return (await SecureStore.getItemAsync(KEYS.THEME_PREF)) || 'system';
+  },
+  setThemePreference: async (pref) => {
+    await SecureStore.setItemAsync(KEYS.THEME_PREF, pref);
+  },
+
+  // Notifications: { push, sound, vibration }
+  getNotifPreferences: async () => {
+    const raw = await SecureStore.getItemAsync(KEYS.NOTIF_PREF);
+    if (!raw) return { push: true, sound: true, vibration: true };
+    try { return JSON.parse(raw); } catch { return { push: true, sound: true, vibration: true }; }
+  },
+  setNotifPreferences: async (prefs) => {
+    await SecureStore.setItemAsync(KEYS.NOTIF_PREF, JSON.stringify(prefs));
   },
 };

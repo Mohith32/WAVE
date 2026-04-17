@@ -5,9 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, setAuthToken } from '../../utils/api';
-import { storage } from '../../utils/storage';
-import { connectWebSocket } from '../../utils/websocket';
+import { api } from '../../utils/api';
 import { generateKeyPair } from '../../utils/crypto';
 import { useTheme } from '../../utils/theme';
 
@@ -17,14 +15,23 @@ export default function RegisterScreen() {
   const s = useMemo(() => makeStyles(theme), [theme]);
 
   const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!displayName.trim() || !email.trim() || !password.trim()) {
+    if (!displayName.trim() || !username.trim() || !email.trim() || !password.trim()) {
       Alert.alert('Missing fields', 'Please fill in all fields.');
+      return;
+    }
+    if (username.length < 3) {
+      Alert.alert('Username too short', 'Use at least 3 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.]+$/.test(username)) {
+      Alert.alert('Invalid username', 'Only letters, numbers, _ and . allowed.');
       return;
     }
     if (password.length < 6) {
@@ -34,27 +41,27 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
+      // Generate keys now so they're ready when we register after OTP verify
       const keyPair = await generateKeyPair();
-      const res = await api.register({
-        displayName: displayName.trim(),
-        email: email.trim(),
-        password,
-        publicKey: keyPair.publicKey,
-      });
+      const cleanEmail = email.trim().toLowerCase();
 
-      if (res.success) {
-        const loginRes = await api.login({ email: email.trim(), password });
-        if (loginRes.success) {
-          const { token, userId, displayName: dn, email: userEmail } = loginRes.data;
-          setAuthToken(token);
-          await storage.saveSession({ token, userId, displayName: dn, email: userEmail });
-          await storage.saveKeyPair(keyPair);
-          connectWebSocket(token);
-          router.replace('/(main)/chats');
-        }
-      } else {
-        Alert.alert('Registration failed', res.message || 'Something went wrong.');
+      const otpRes = await api.requestOtp(cleanEmail);
+      if (!otpRes.success) {
+        Alert.alert('Could not send code', otpRes.message || 'Try again.');
+        return;
       }
+
+      router.push({
+        pathname: '/(auth)/verify-otp',
+        params: {
+          email: cleanEmail,
+          displayName: displayName.trim(),
+          username: username.trim().toLowerCase(),
+          password,
+          publicKey: keyPair.publicKey,
+          privateKey: keyPair.privateKey,
+        },
+      });
     } catch (e) {
       Alert.alert('Error', 'Could not connect to server.');
     } finally {
@@ -86,6 +93,21 @@ export default function RegisterScreen() {
               placeholderTextColor={theme.colors.placeholder}
               value={displayName}
               onChangeText={setDisplayName}
+            />
+          </View>
+
+          <Text style={[s.label, { marginTop: 18 }]}>Username</Text>
+          <View style={s.inputWrap}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.lg, marginRight: 4 }}>@</Text>
+            <TextInput
+              style={s.input}
+              placeholder="your_handle"
+              placeholderTextColor={theme.colors.placeholder}
+              value={username}
+              onChangeText={(t) => setUsername(t.toLowerCase().replace(/[^a-z0-9_.]/g, ''))}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={20}
             />
           </View>
 
@@ -130,7 +152,7 @@ export default function RegisterScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={s.btnText}>CREATE ACCOUNT</Text>
+              <Text style={s.btnText}>SEND VERIFICATION CODE</Text>
             )}
           </TouchableOpacity>
         </View>

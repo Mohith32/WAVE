@@ -45,7 +45,7 @@ export default function ChatsScreen() {
   return (
     <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <Text style={s.title}>Chats</Text>
+        <Text style={s.title}>DMs</Text>
         <TouchableOpacity
           style={s.searchBtn}
           onPress={() => router.push('/(main)/friends')}
@@ -76,7 +76,7 @@ export default function ChatsScreen() {
             !loading && (
               <EmptyState
                 icon="chatbubbles-outline"
-                title="No chats yet"
+                title="No DMs yet"
                 subtitle="Add contacts to start messaging"
               />
             )

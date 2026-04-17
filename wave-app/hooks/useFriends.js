@@ -40,7 +40,8 @@ export function useFriends() {
       }
     });
     return () => remove();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const search = useCallback(async (query) => {
     if (!query || query.length < 2) {

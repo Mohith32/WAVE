@@ -85,6 +85,12 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<!-- Mail: SMTP for OTP email verification (Brevo) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- WebFlux WebClient: used for non-blocking Supabase Storage HTTP calls -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -47,17 +47,32 @@ export default function ProfileScreen() {
   const initial = user.displayName?.charAt(0).toUpperCase() || '?';
   const bg = getAvatarColor(user.displayName);
 
+  const themeLabel = theme.preference === 'system'
+    ? (scheme === 'dark' ? 'System · Dark' : 'System · Light')
+    : theme.preference.charAt(0).toUpperCase() + theme.preference.slice(1);
+
   const rows = [
-    { icon: 'key-outline', label: 'Encryption Keys', color: theme.colors.primary },
-    { icon: 'notifications-outline', label: 'Notifications', color: '#F59E0B' },
+    {
+      icon: 'key-outline', label: 'Encryption Keys', color: theme.colors.primary,
+      onPress: () => router.push('/(main)/settings-keys'),
+    },
+    {
+      icon: 'notifications-outline', label: 'Notifications', color: '#F59E0B',
+      onPress: () => router.push('/(main)/settings-notifications'),
+    },
     {
       icon: scheme === 'dark' ? 'moon' : 'sunny',
-      label: 'Theme',
-      color: '#EC4899',
-      value: scheme === 'dark' ? 'Dark' : 'Light',
+      label: 'Theme', color: '#EC4899', value: themeLabel,
+      onPress: () => router.push('/(main)/settings-theme'),
     },
-    { icon: 'lock-closed-outline', label: 'Privacy & Security', color: theme.colors.success },
-    { icon: 'information-circle-outline', label: 'About Wave', color: theme.colors.textSecondary },
+    {
+      icon: 'lock-closed-outline', label: 'Privacy & Security', color: theme.colors.success,
+      onPress: () => router.push('/(main)/settings-privacy'),
+    },
+    {
+      icon: 'information-circle-outline', label: 'About Wave', color: theme.colors.textSecondary,
+      onPress: () => router.push('/(main)/settings-about'),
+    },
   ];
 
   return (
@@ -77,7 +92,7 @@ export default function ProfileScreen() {
       <View style={s.section}>
         {rows.map((r, idx) => (
           <View key={r.label}>
-            <TouchableOpacity style={s.row} activeOpacity={0.6}>
+            <TouchableOpacity style={s.row} activeOpacity={0.6} onPress={r.onPress}>
               <View style={[s.rowIconBox, { backgroundColor: r.color + '22' }]}>
                 <Ionicons name={r.icon} size={20} color={r.color} />
               </View>

@@ -1,15 +1,20 @@
-const API_BASE = 'http://192.168.1.15:8080';
-// const API_BASE = 'http://10.0.2.2:8080'; // Android emulator
-// const API_BASE = 'http://localhost:8080';   // iOS simulator
+const API_BASE = 'https://wave-1a21.onrender.com';
+// Local dev fallbacks:
+// const API_BASE = 'http://192.168.1.15:8080';  // LAN (physical device)
+// const API_BASE = 'http://10.0.2.2:8080';      // Android emulator
+// const API_BASE = 'http://localhost:8080';     // iOS simulator
 
-export const WS_URL = API_BASE.replace('http', 'ws') + '/chat';
+// https -> wss, http -> ws
+export const WS_URL = API_BASE.replace(/^http/, 'ws') + '/chat';
 
 let authToken = null;
 
 export const setAuthToken = (token) => { authToken = token; };
 export const getAuthToken = () => authToken;
 
-const REQUEST_TIMEOUT = 12000;
+// 75s to tolerate Render free-tier cold starts (~30-60s). After the first
+// request wakes the server, subsequent ones resolve in <1s.
+const REQUEST_TIMEOUT = 75000;
 
 const jsonHeaders = () => ({
   'Content-Type': 'application/json',
@@ -41,11 +46,12 @@ async function request(url, options = {}, retries = 2) {
     }
   } catch (e) {
     clearTimeout(timer);
-    if (e.name === 'AbortError') return { success: false, message: 'Request timed out' };
+    // On timeout or transient network error, retry once before giving up
     if (retries > 0) {
       await new Promise(r => setTimeout(r, 800));
       return request(url, options, retries - 1);
     }
+    if (e.name === 'AbortError') return { success: false, message: 'Request timed out' };
     return { success: false, message: 'Network error' };
   }
 }
@@ -61,6 +67,18 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  }),
+
+  requestOtp: (email) => request(`${API_BASE}/api/auth/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  }),
+
+  verifyOtp: (email, code) => request(`${API_BASE}/api/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code }),
   }),
 
   getUsers: () => request(`${API_BASE}/api/auth/users`, { headers: jsonHeaders() }),

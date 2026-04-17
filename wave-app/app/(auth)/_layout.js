@@ -8,11 +8,12 @@ export default function AuthLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: theme.colors.background },
-        animation: 'slide_from_bottom',
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
+      <Stack.Screen name="verify-otp" options={{ animation: 'slide_from_bottom' }} />
     </Stack>
   );
 }

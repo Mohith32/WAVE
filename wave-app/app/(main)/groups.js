@@ -20,7 +20,7 @@ const GroupItem = memo(({ item, onPress, theme, s }) => {
       <View style={s.info}>
         <Text style={s.name} numberOfLines={1}>{item.groupName}</Text>
         <Text style={s.sub} numberOfLines={1}>
-          {item.description || 'Group chat'}
+          {item.description || 'Clan chat'}
         </Text>
       </View>
     </TouchableOpacity>
@@ -41,7 +41,7 @@ export default function GroupsScreen() {
   return (
     <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
-        <Text style={s.title}>Groups</Text>
+        <Text style={s.title}>Clans</Text>
       </View>
 
       {error ? (
@@ -64,9 +64,9 @@ export default function GroupsScreen() {
           ListEmptyComponent={
             !loading && (
               <EmptyState
-                icon="people-circle-outline"
-                title="No groups yet"
-                subtitle="Create a group to chat with friends"
+                icon="flame-outline"
+                title="No clans yet"
+                subtitle="Create a clan to chat with your crew"
               />
             )
           }

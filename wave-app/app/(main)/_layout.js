@@ -29,7 +29,7 @@ export default function MainLayout() {
       <Tabs.Screen
         name="chats"
         options={{
-          title: 'Chats',
+          title: 'DMs',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'chatbubble' : 'chatbubble-outline'} size={24} color={color} />
           ),
@@ -47,9 +47,9 @@ export default function MainLayout() {
       <Tabs.Screen
         name="groups"
         options={{
-          title: 'Groups',
+          title: 'Clans',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'people-circle' : 'people-circle-outline'} size={26} color={color} />
+            <Ionicons name={focused ? 'flame' : 'flame-outline'} size={26} color={color} />
           ),
         }}
       />
@@ -65,6 +65,11 @@ export default function MainLayout() {
       <Tabs.Screen name="chat/[id]" options={{ href: null }} />
       <Tabs.Screen name="group-chat/[id]" options={{ href: null }} />
       <Tabs.Screen name="create-group" options={{ href: null }} />
+      <Tabs.Screen name="settings-keys" options={{ href: null }} />
+      <Tabs.Screen name="settings-notifications" options={{ href: null }} />
+      <Tabs.Screen name="settings-theme" options={{ href: null }} />
+      <Tabs.Screen name="settings-privacy" options={{ href: null }} />
+      <Tabs.Screen name="settings-about" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -41,7 +41,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String ip = clientIp(req);
 
         Bucket bucket = null;
-        if (path.equals("/api/auth/login") || path.equals("/api/auth/register")) {
+        if (path.equals("/api/auth/login") || path.equals("/api/auth/register")
+                || path.equals("/api/auth/request-otp") || path.equals("/api/auth/verify-otp")) {
             bucket = authBuckets.computeIfAbsent(ip, k -> buildBucket(props.getAuth()));
         } else if (path.equals("/api/files/upload")) {
             bucket = uploadBuckets.computeIfAbsent(ip, k -> buildBucket(props.getUpload()));

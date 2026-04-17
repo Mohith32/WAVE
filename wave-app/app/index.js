@@ -1,37 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { Ionicons } from '@expo/vector-icons';
 import { storage } from '../utils/storage';
 import { setAuthToken } from '../utils/api';
 import { connectWebSocket } from '../utils/websocket';
-import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/theme';
+
+// Splash screen stays visible until this route renders + we navigate away.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function Index() {
   const router = useRouter();
   const theme = useTheme();
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { checkSession(); }, []);
-
-  const checkSession = async () => {
-    try {
-      const session = await storage.getSession();
-      if (session && session.token) {
-        setAuthToken(session.token);
-        connectWebSocket(session.token);
-        router.replace('/(main)/chats');
-      } else {
+  useEffect(() => {
+    (async () => {
+      try {
+        const session = await storage.getSession();
+        if (session?.token) {
+          setAuthToken(session.token);
+          connectWebSocket(session.token);
+          router.replace('/(main)/chats');
+        } else {
+          router.replace('/(auth)/login');
+        }
+      } catch (e) {
+        console.warn('Session check failed', e);
         router.replace('/(auth)/login');
+      } finally {
+        SplashScreen.hideAsync().catch(() => {});
       }
-    } catch (e) {
-      router.replace('/(auth)/login');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (!loading) return null;
+    })();
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>

@@ -86,7 +86,7 @@ export default function CreateGroupScreen() {
         <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="close" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>New Group</Text>
+        <Text style={s.headerTitle}>New Clan</Text>
         <TouchableOpacity
           style={[s.createBtn, !groupName.trim() && s.createBtnDisabled]}
           onPress={handleCreate}
@@ -103,7 +103,7 @@ export default function CreateGroupScreen() {
       <View style={s.form}>
         <TextInput
           style={s.input}
-          placeholder="Group name"
+          placeholder="Clan name"
           placeholderTextColor={theme.colors.placeholder}
           value={groupName}
           onChangeText={setGroupName}

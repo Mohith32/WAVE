@@ -40,7 +40,8 @@ export function useUsers() {
       }
     });
     return () => remove();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refresh = useCallback(() => load(true), [load]);
 

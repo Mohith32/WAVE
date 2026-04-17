@@ -1,11 +1,10 @@
 import React, { memo, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { useTheme } from '../../utils/theme';
 import { api } from '../../utils/api';
 import Avatar from '../../components/Avatar';
@@ -13,8 +12,17 @@ import EmptyState from '../../components/EmptyState';
 import { useFriends } from '../../hooks/useFriends';
 
 const ResultItem = memo(({ item, onAction, theme, s }) => {
-  const isPending = item.relationship === 'PENDING';
   const isFriend = item.relationship === 'FRIEND';
+  const isOutgoing = item.relationship === 'PENDING_OUT';
+  const isIncoming = item.relationship === 'PENDING_IN';
+  const disabled = isFriend || isOutgoing || isIncoming;
+
+  let label = 'Add';
+  let variant = null;
+  if (isFriend) { label = 'Friends'; variant = s.actionBtnFriend; }
+  else if (isOutgoing) { label = 'Requested'; variant = s.actionBtnDisabled; }
+  else if (isIncoming) { label = 'Accept'; variant = s.actionBtnAccept; }
+
   return (
     <View style={s.item}>
       <Avatar name={item.displayName} size={48} />
@@ -23,13 +31,11 @@ const ResultItem = memo(({ item, onAction, theme, s }) => {
         {!!item.username && <Text style={s.username}>@{item.username}</Text>}
       </View>
       <TouchableOpacity
-        style={[s.actionBtn, isFriend ? s.actionBtnActive : isPending ? s.actionBtnDisabled : null]}
-        disabled={isPending || isFriend}
+        style={[s.actionBtn, variant]}
+        disabled={disabled && !isIncoming}
         onPress={() => onAction(item)}
       >
-        <Text style={[s.actionText, (isFriend || isPending) && s.actionTextMuted]}>
-          {isFriend ? 'Friend' : isPending ? 'Pending' : 'Add'}
-        </Text>
+        <Text style={[s.actionText, (isFriend || isOutgoing) && s.actionTextMuted]}>{label}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -70,19 +76,39 @@ export default function FriendsScreen() {
     }
   };
 
-  const handleAdd = async (user) => {
+  const handleResultAction = async (user) => {
+    // If incoming request, tapping = accept
+    if (user.relationship === 'PENDING_IN') {
+      const res = await api.acceptFriendRequest(user.userId);
+      if (res.success) {
+        Alert.alert('Connected', `You and ${user.displayName} are now friends.`);
+        search(query);
+        load(true);
+      } else {
+        Alert.alert('Could not accept', res.message || 'Please try again.');
+      }
+      return;
+    }
+    // Otherwise send request
     const res = await api.sendFriendRequest(user.userId);
-    if (res.success) search(query);
+    if (res.success) {
+      Alert.alert('Request sent', `${user.displayName} will see your request.`);
+      search(query);
+    } else {
+      Alert.alert('Could not send request', res.message || 'Please try again.');
+    }
   };
 
   const handleAccept = async (req) => {
     const res = await api.acceptFriendRequest(req.userId);
     if (res.success) load(true);
+    else Alert.alert('Error', res.message || 'Could not accept');
   };
 
   const handleReject = async (req) => {
     const res = await api.rejectFriendRequest(req.userId);
     if (res.success) load(true);
+    else Alert.alert('Error', res.message || 'Could not reject');
   };
 
   return (
@@ -116,7 +142,7 @@ export default function FriendsScreen() {
         keyExtractor={item => item.userId}
         renderItem={({ item }) =>
           query.length > 2
-            ? <ResultItem item={item} onAction={handleAdd} theme={theme} s={s} />
+            ? <ResultItem item={item} onAction={handleResultAction} theme={theme} s={s} />
             : <RequestItem item={item} onAccept={handleAccept} onReject={handleReject} theme={theme} s={s} />
         }
         ItemSeparatorComponent={() => <View style={s.separator} />}
@@ -134,7 +160,7 @@ export default function FriendsScreen() {
             <EmptyState
               icon="people-outline"
               title="No contacts yet"
-              subtitle="Search above to find friends"
+              subtitle="Search above by @username or name to find people"
             />
           ) : null
         }
@@ -209,9 +235,11 @@ const makeStyles = (t) => StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 7,
     backgroundColor: t.colors.primary,
     borderRadius: t.borderRadius.full,
+    minWidth: 76, alignItems: 'center',
   },
-  actionBtnActive: { backgroundColor: t.colors.surfaceMuted },
-  actionBtnDisabled: { backgroundColor: t.colors.borderLight },
+  actionBtnFriend: { backgroundColor: t.colors.surfaceMuted },
+  actionBtnDisabled: { backgroundColor: t.colors.surfaceMuted },
+  actionBtnAccept: { backgroundColor: t.colors.success },
   actionText: { fontFamily: t.typography.fontSemiBold, fontSize: 13, color: '#fff' },
   actionTextMuted: { color: t.colors.textMuted },
   reqActions: { flexDirection: 'row', gap: 8 },

@@ -25,7 +25,8 @@ export function useGroups() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
 
   const refresh = useCallback(() => load(true), [load]);
 
