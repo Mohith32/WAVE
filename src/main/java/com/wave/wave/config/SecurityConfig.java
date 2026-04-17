@@ -39,7 +39,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                 .requestMatchers("/chat/**").permitAll()
-                .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                .requestMatchers("/actuator/health/**", "/actuator/info", "/healthz").permitAll()
                 .requestMatchers("/api/files/*").permitAll()
                 .requestMatchers("/", "/index.html", "/chat.html", "/css/**", "/js/**", "/img/**", "/favicon.ico").permitAll()
                 .anyRequest().authenticated()
