@@ -34,4 +34,15 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     @Query("SELECT m FROM Message m WHERE m.groupId = :groupId ORDER BY m.timestamp DESC")
     Page<Message> findByGroupIdPaged(@Param("groupId") String groupId, Pageable pageable);
+
+    /**
+     * Returns the latest 1:1 message per conversation partner, newest first.
+     * Use result.senderId/receiverId to derive the peer relative to :me.
+     * Limited to ~200 rows by Pageable caller — that's way more than any real user
+     * has conversations, and lets the service dedupe in-memory.
+     */
+    @Query("SELECT m FROM Message m WHERE m.groupId IS NULL " +
+           "AND (m.senderId = :me OR m.receiverId = :me) " +
+           "ORDER BY m.timestamp DESC")
+    List<Message> findRecentOneToOneMessages(@Param("me") String me, Pageable pageable);
 }

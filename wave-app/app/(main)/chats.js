@@ -5,41 +5,63 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFriends } from '../../hooks/useFriends';
 import Avatar from '../../components/Avatar';
 import EmptyState from '../../components/EmptyState';
+import { useConversations } from '../../hooks/useConversations';
 import { useTheme } from '../../utils/theme';
 
 const ITEM_HEIGHT = 72;
 
-const ChatItem = memo(({ item, onPress, theme, s }) => (
-  <TouchableOpacity
-    style={s.item}
-    activeOpacity={0.6}
-    onPress={() => onPress(item)}
-  >
+function formatWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    const h = d.getHours();
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const hh = h % 12 || 12;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    return `${hh}:${m} ${ampm}`;
+  }
+  const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+  if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+const previewText = (item) => {
+  const who = item.iSentLast ? 'You: ' : '';
+  const type = item.lastMessageType || 'TEXT';
+  if (type === 'IMAGE') return `${who}📷 Photo`;
+  if (type === 'FILE') return `${who}📄 File`;
+  return `${who}New message`;
+};
+
+const ConversationItem = memo(({ item, onPress, theme, s }) => (
+  <TouchableOpacity style={s.item} activeOpacity={0.6} onPress={() => onPress(item)}>
     <Avatar name={item.displayName} size={54} showOnline online={item.online} />
     <View style={s.info}>
       <View style={s.topRow}>
         <Text style={s.name} numberOfLines={1}>{item.displayName}</Text>
-        <Text style={s.time}>{item.online ? 'online' : ''}</Text>
+        <Text style={s.time}>{formatWhen(item.lastMessageAt)}</Text>
       </View>
-      <Text style={s.sub} numberOfLines={1}>
-        Tap to start a secure chat
-      </Text>
+      <Text style={s.sub} numberOfLines={1}>{previewText(item)}</Text>
     </View>
   </TouchableOpacity>
 ));
 
-export default function ChatsScreen() {
+export default function DMsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const s = useMemo(() => makeStyles(theme), [theme]);
-  const { friends, loading, refreshing, error, load } = useFriends();
+  const { conversations, loading, refreshing, error, load } = useConversations();
 
-  const handlePress = useCallback((user) => {
-    router.push(`/(main)/chat/${user.userId}?name=${encodeURIComponent(user.displayName)}`);
+  const openChat = useCallback((item) => {
+    router.push(`/(main)/chat/${item.userId}?name=${encodeURIComponent(item.displayName)}`);
   }, [router]);
 
   return (
@@ -59,9 +81,9 @@ export default function ChatsScreen() {
         <EmptyState icon="cloud-offline-outline" title="Network error" subtitle={error} />
       ) : (
         <FlatList
-          data={friends}
+          data={conversations}
           keyExtractor={item => item.userId}
-          renderItem={({ item }) => <ChatItem item={item} onPress={handlePress} theme={theme} s={s} />}
+          renderItem={({ item }) => <ConversationItem item={item} onPress={openChat} theme={theme} s={s} />}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -69,7 +91,7 @@ export default function ChatsScreen() {
               tintColor={theme.colors.primary}
             />
           }
-          contentContainerStyle={friends.length === 0 ? s.emptyContent : null}
+          contentContainerStyle={conversations.length === 0 ? s.emptyContent : null}
           getItemLayout={(data, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
           ItemSeparatorComponent={() => <View style={s.separator} />}
           ListEmptyComponent={
@@ -77,7 +99,7 @@ export default function ChatsScreen() {
               <EmptyState
                 icon="chatbubbles-outline"
                 title="No DMs yet"
-                subtitle="Add contacts to start messaging"
+                subtitle="Tap a mate in Contacts to start chatting"
               />
             )
           }
@@ -103,12 +125,9 @@ const makeStyles = (t) => StyleSheet.create({
     backgroundColor: t.colors.headerBg,
     borderBottomWidth: 0.5, borderBottomColor: t.colors.headerBorder,
   },
-  title: {
-    fontFamily: t.typography.fontSemiBold,
-    fontSize: t.fontSize.xxl,
-    color: t.colors.text,
-  },
+  title: { fontFamily: t.typography.fontSemiBold, fontSize: t.fontSize.xxl, color: t.colors.text },
   searchBtn: { padding: 6 },
+
   emptyContent: { flex: 1 },
   item: {
     height: ITEM_HEIGHT,
@@ -129,7 +148,7 @@ const makeStyles = (t) => StyleSheet.create({
   time: {
     fontFamily: t.typography.fontRegular,
     fontSize: 12,
-    color: t.colors.online,
+    color: t.colors.textMuted,
   },
   sub: {
     fontFamily: t.typography.fontRegular,
@@ -140,6 +159,7 @@ const makeStyles = (t) => StyleSheet.create({
     height: 0.5, marginLeft: 84,
     backgroundColor: t.colors.borderLight,
   },
+
   fab: {
     position: 'absolute',
     right: 18, bottom: 20,

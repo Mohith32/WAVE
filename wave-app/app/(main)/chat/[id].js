@@ -248,11 +248,7 @@ export default function ChatRoomScreen() {
   ), [theme, s]);
 
   return (
-    <KeyboardAvoidingView
-      style={s.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-    >
+    <View style={s.container}>
       <View style={[s.header, { paddingTop: insets.top || 44 }]}>
         <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={28} color={theme.colors.primary} />
@@ -269,42 +265,49 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        style={s.list}
-        inverted
-        data={messages}
-        keyExtractor={item => String(item._id)}
-        renderItem={renderItem}
-        contentContainerStyle={s.listContent}
-        onEndReached={onLoadEarlier}
-        onEndReachedThreshold={0.2}
-        ListFooterComponent={loadingEarlier ? (
-          <ActivityIndicator style={{ marginVertical: 12 }} color={theme.colors.primary} />
-        ) : null}
-      />
-
-      <View style={[s.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        <TouchableOpacity style={s.attachBtn} onPress={pickImage} hitSlop={6}>
-          <Ionicons name="attach" size={24} color={theme.colors.textMuted} />
-        </TouchableOpacity>
-        <TextInput
-          style={s.textInput}
-          placeholder="Message"
-          placeholderTextColor={theme.colors.textMuted}
-          value={input}
-          onChangeText={onTextChange}
-          multiline
-          maxLength={4000}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? (insets.top + 50) : 0}
+      >
+        <FlatList
+          style={s.list}
+          inverted
+          data={messages}
+          keyExtractor={item => String(item._id)}
+          renderItem={renderItem}
+          contentContainerStyle={s.listContent}
+          keyboardShouldPersistTaps="handled"
+          onEndReached={onLoadEarlier}
+          onEndReachedThreshold={0.2}
+          ListFooterComponent={loadingEarlier ? (
+            <ActivityIndicator style={{ marginVertical: 12 }} color={theme.colors.primary} />
+          ) : null}
         />
-        <TouchableOpacity
-          style={[s.sendBtn, !input.trim() && s.sendBtnDisabled]}
-          onPress={onSend}
-          disabled={!input.trim()}
-        >
-          <Ionicons name="send" size={18} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+
+        <View style={[s.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+          <TouchableOpacity style={s.attachBtn} onPress={pickImage} hitSlop={6}>
+            <Ionicons name="attach" size={24} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+          <TextInput
+            style={s.textInput}
+            placeholder="Message"
+            placeholderTextColor={theme.colors.textMuted}
+            value={input}
+            onChangeText={onTextChange}
+            multiline
+            maxLength={4000}
+          />
+          <TouchableOpacity
+            style={[s.sendBtn, !input.trim() && s.sendBtnDisabled]}
+            onPress={onSend}
+            disabled={!input.trim()}
+          >
+            <Ionicons name="send" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 

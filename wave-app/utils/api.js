@@ -106,6 +106,11 @@ export const api = {
     { headers: jsonHeaders() }
   ),
 
+  getConversations: () => request(
+    `${API_BASE}/api/messages/conversations`,
+    { headers: jsonHeaders() }
+  ),
+
   createGroup: (groupName, description, memberIds) => request(`${API_BASE}/api/groups/create`, {
     method: 'POST',
     headers: jsonHeaders(),

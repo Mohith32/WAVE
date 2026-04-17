@@ -7,9 +7,9 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../../utils/api';
-import { storage } from '../../utils/storage';
 import { useTheme } from '../../utils/theme';
 import Avatar from '../../components/Avatar';
+import EmptyState from '../../components/EmptyState';
 
 export default function CreateGroupScreen() {
   const router = useRouter();
@@ -28,10 +28,10 @@ export default function CreateGroupScreen() {
 
   const loadUsers = async () => {
     try {
-      const session = await storage.getSession();
-      const res = await api.getUsers();
+      // Only friends (mates) are allowed as clan members
+      const res = await api.getFriends();
       if (res.success) {
-        setUsers((res.data || []).filter(u => u.userId !== session?.userId));
+        setUsers(res.data || []);
       }
     } catch (e) {
       console.error(e);
@@ -119,12 +119,18 @@ export default function CreateGroupScreen() {
       </View>
 
       <View style={s.sectionHeader}>
-        <Text style={s.sectionTitle}>ADD MEMBERS</Text>
+        <Text style={s.sectionTitle}>ADD MATES</Text>
         {selectedUsers.size > 0 && <Text style={s.selectedCount}>{selectedUsers.size} selected</Text>}
       </View>
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={theme.colors.primary} />
+      ) : users.length === 0 ? (
+        <EmptyState
+          icon="people-outline"
+          title="No mates yet"
+          subtitle="Add people from the Contacts tab before creating a clan"
+        />
       ) : (
         <FlatList
           data={users}

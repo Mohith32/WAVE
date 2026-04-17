@@ -34,5 +34,5 @@ export function useGroups() {
     setGroups(prev => [group, ...prev]);
   }, []);
 
-  return { groups, loading, refreshing, error, refresh, addGroup };
+  return { groups, loading, refreshing, error, load, refresh, addGroup };
 }

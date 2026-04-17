@@ -75,8 +75,10 @@ public class UserService {
     }
 
     public List<User> searchUsers(String query) {
-        if (query == null || query.trim().length() < 2) return List.of();
-        return userRepo.searchUsers(query.trim());
+        if (query == null || query.trim().isEmpty()) return List.of();
+        // Cap results to prevent "a" from dumping the whole user table
+        return userRepo.searchUsers(query.trim(),
+                org.springframework.data.domain.PageRequest.of(0, 20));
     }
 
     @Caching(evict = {

@@ -44,12 +44,13 @@ export function useFriends() {
   }, []);
 
   const search = useCallback(async (query) => {
-    if (!query || query.length < 2) {
+    const q = (query || '').trim();
+    if (!q) {
       setSearchResults([]);
       return;
     }
-    const res = await api.searchUsers(query);
-    if (res.success) setSearchResults(res.data);
+    const res = await api.searchUsers(q);
+    if (res.success) setSearchResults(res.data || []);
   }, []);
 
   return { friends, requests, searchResults, loading, refreshing, error, load, search, setFriends, setRequests };

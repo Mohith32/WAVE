@@ -6,9 +6,11 @@ import com.wave.wave.service.MessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/messages")
@@ -49,5 +51,20 @@ public class MessageController {
     public ResponseEntity<ApiResponse<List<Message>>> getGroupMessages(@PathVariable String groupId) {
         List<Message> messages = messageService.getGroupMessages(groupId);
         return ResponseEntity.ok(ApiResponse.ok("Group messages fetched", messages));
+    }
+
+    /**
+     * List of people you've exchanged 1:1 messages with, newest-first.
+     * Powers the DMs tab.
+     */
+    @GetMapping("/conversations")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getConversations() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return ResponseEntity.ok(ApiResponse.ok("Conversations fetched", List.of()));
+        }
+        String myId = auth.getPrincipal().toString();
+        List<Map<String, Object>> convos = messageService.getRecentConversations(myId);
+        return ResponseEntity.ok(ApiResponse.ok("Conversations fetched", convos));
     }
 }
