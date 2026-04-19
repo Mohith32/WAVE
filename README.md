@@ -262,7 +262,9 @@ Server authenticates via JWT in the query string, then both sides exchange JSON 
 
 ## License
 
-MIT
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for the full text.
+
+Copyright © 2026 [Mohith32](https://github.com/Mohith32). You are free to use, modify, distribute, and sublicense this software, provided the copyright notice and permission notice are kept intact.
 
 ---
 
